@@ -1,0 +1,49 @@
+# .NET Core
+project.lock.json
+project.fragment.lock.json
+artifacts/
+*/bin/
+*/obj/
+bin/
+obj/
+*.user
+*.suo
+*.userprefs
+
+# Visual Studio Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# Visual Studio
+.vs/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln.docstates
+
+# Environment Variables
+.env
+.env.*
+!.env.example
+
+# Docker
+docker-compose.override.yml
+.dockerignore
+
+# Testing / Load Testing
+*.log
+results/
+reports/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Coverage
+*.coverage
+*.coveragexml
+coverage.json
