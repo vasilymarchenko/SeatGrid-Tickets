@@ -17,7 +17,8 @@ builder.Services.AddHealthChecks()
     .AddNpgSql(
         builder.Configuration.GetConnectionString("DefaultConnection") ?? "",
         name: "postgres",
-        timeout: TimeSpan.FromSeconds(3));
+        timeout: TimeSpan.FromSeconds(3),
+        tags: new[] { "ready" });
 
 builder.Services.AddControllers();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
@@ -81,10 +82,16 @@ app.UseAuthorization();
 app.MapControllers();
 
 // Map health check endpoints
-app.MapHealthChecks("/health");
+// Liveness: Fast check - just verifies the app is running (no dependency checks)
+app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    Predicate = _ => false // Don't run any health checks, just return 200 if app responds
+});
+
+// Readiness: Full check - verifies app can handle requests (checks all dependencies)
 app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
 {
-    Predicate = _ => true
+    Predicate = check => check.Tags.Contains("ready")
 });
 
 app.Run();
