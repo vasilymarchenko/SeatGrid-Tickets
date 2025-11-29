@@ -3,7 +3,7 @@ import { check, sleep } from 'k6';
 import { randomIntBetween } from 'https://jslib.k6.io/k6-utils/1.2.0/index.js';
 
 // Configuration
-const BASE_URL = 'http://localhost:5025';
+const BASE_URL = 'http://localhost:5000';
 const TOTAL_SEATS = 100; // 10x10
 const TARGET_VUS = 2000; // Simulate high concurrency
 

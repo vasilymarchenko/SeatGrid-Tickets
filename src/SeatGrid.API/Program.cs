@@ -12,6 +12,13 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<SeatGridDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
+// Add health checks
+builder.Services.AddHealthChecks()
+    .AddNpgSql(
+        builder.Configuration.GetConnectionString("DefaultConnection") ?? "",
+        name: "postgres",
+        timeout: TimeSpan.FromSeconds(3));
+
 builder.Services.AddControllers();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
@@ -59,10 +66,25 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
-app.UseHttpsRedirection();
+// Only redirect to HTTPS when not running in Docker (ASPNETCORE_URLS will be http only)
+if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER")))
+{
+    // Skip HTTPS redirection in container
+}
+else
+{
+    app.UseHttpsRedirection();
+}
 
 app.UseAuthorization();
 
 app.MapControllers();
+
+// Map health check endpoints
+app.MapHealthChecks("/health");
+app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    Predicate = _ => true
+});
 
 app.Run();

@@ -10,7 +10,7 @@ export const options = {
   ],
 };
 
-const BASE_URL = 'http://localhost:5025';
+const BASE_URL = 'http://localhost:5000';
 
 export function setup() {
   // Create a new event for this test run

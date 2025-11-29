@@ -1,0 +1,26 @@
+services:
+  seatgrid-api:
+    image: seatgrid-api
+    container_name: seatgrid-api
+    build:
+      context: .
+      dockerfile: src/SeatGrid.API/Dockerfile
+    environment:
+      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=seatgrid;Username=postgres;Password=postgres
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8080
+    ports:
+      - "5000:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    restart: unless-stopped

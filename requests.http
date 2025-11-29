@@ -1,4 +1,4 @@
-@host = http://localhost:5025
+@host = http://localhost:5000
 
 ### 1. Create Event
 # @name createEvent

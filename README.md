@@ -30,7 +30,7 @@ This project follows a phased implementation plan:
 ### 1. Infrastructure
 Start the infrastructure (Postgres + Observability Stack):
 ```bash
-docker-compose up -d
+docker compose -f docker-compose.infra.yml up -d
 ```
 
 **Observability Services**:
@@ -39,20 +39,27 @@ docker-compose up -d
 *   **Tempo** (Traces): Visualized in Grafana
 *   **Loki** (Logs): Visualized in Grafana
 
-### 2. Database Migrations
+### 2. Run the Application (Docker)
+To run the application along with the infrastructure:
+```bash
+docker compose -f docker-compose.infra.yml -f docker-compose.app.yml up -d --build
+```
+The API will be available at `http://localhost:5000`.
+
+### 3. Database Migrations
 The application is configured to apply migrations automatically on startup.
 To apply them manually:
 ```bash
 dotnet ef database update -p src/SeatGrid.API/SeatGrid.API.csproj
 ```
 
-### 3. Run the Application
+### 4. Run the Application (Local)
 ```bash
 dotnet run --project src/SeatGrid.API/SeatGrid.API.csproj
 ```
-The API will be available at `http://localhost:5025`.
+The API will be available at `http://localhost:5000`.
 
-### 4. Testing
+### 5. Testing
 **Functional Testing**:
 Use the `requests.http` file in VS Code (requires REST Client extension) to create events and book seats.
 
