@@ -12,11 +12,23 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<SeatGridDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
+// Add Redis distributed cache
+builder.Services.AddStackExchangeRedisCache(options =>
+{
+    options.Configuration = builder.Configuration.GetConnectionString("Redis");
+    options.InstanceName = "SeatGrid:";
+});
+
 // Add health checks
 builder.Services.AddHealthChecks()
     .AddNpgSql(
         builder.Configuration.GetConnectionString("DefaultConnection") ?? "",
         name: "postgres",
+        timeout: TimeSpan.FromSeconds(3),
+        tags: new[] { "ready" })
+    .AddRedis(
+        builder.Configuration.GetConnectionString("Redis") ?? "",
+        name: "redis",
         timeout: TimeSpan.FromSeconds(3),
         tags: new[] { "ready" });
 
@@ -45,6 +57,7 @@ builder.Services.AddOpenTelemetry()
             // WARNING: This should be disabled in production to avoid leaking sensitive data in SQL queries.
             options.SetDbStatementForText = true;
         })
+        .AddRedisInstrumentation()
         .AddOtlpExporter())
     .WithMetrics(metrics => metrics
         .AddAspNetCoreInstrumentation()

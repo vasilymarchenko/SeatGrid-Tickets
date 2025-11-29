@@ -1,5 +1,11 @@
 @host = http://localhost:5000
 
+### Health Checks
+GET {{host}}/health/live
+
+###
+GET {{host}}/health/ready
+
 ### 1. Create Event
 # @name createEvent
 POST {{host}}/api/events

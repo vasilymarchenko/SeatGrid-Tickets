@@ -76,5 +76,20 @@ services:
       - loki
       - tempo
 
+  redis:
+    image: redis:7-alpine
+    container_name: seatgrid-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - redis_data:/data
+
 volumes:
   seatgrid_data:
+  redis_data:
