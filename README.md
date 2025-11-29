@@ -22,7 +22,45 @@ This project follows a phased implementation plan:
 
 ## Getting Started
 
-*Instructions for running the project locally will be added here.*
+### Prerequisites
+*   Docker Desktop
+*   .NET 9 SDK
+*   k6 (for load testing)
+
+### 1. Infrastructure
+Start the infrastructure (Postgres + Observability Stack):
+```bash
+docker-compose up -d
+```
+
+**Observability Services**:
+*   **Grafana** (Dashboards): [http://localhost:3000](http://localhost:3000)
+*   **Prometheus** (Metrics): [http://localhost:9090](http://localhost:9090)
+*   **Tempo** (Traces): Visualized in Grafana
+*   **Loki** (Logs): Visualized in Grafana
+
+### 2. Database Migrations
+The application is configured to apply migrations automatically on startup.
+To apply them manually:
+```bash
+dotnet ef database update -p src/SeatGrid.API/SeatGrid.API.csproj
+```
+
+### 3. Run the Application
+```bash
+dotnet run --project src/SeatGrid.API/SeatGrid.API.csproj
+```
+The API will be available at `http://localhost:5025`.
+
+### 4. Testing
+**Functional Testing**:
+Use the `requests.http` file in VS Code (requires REST Client extension) to create events and book seats.
+
+**Load Testing (k6)**:
+Run the baseline load test:
+```bash
+k6 run tests/k6/baseline_test.js
+```
 
 ## Documentation
 

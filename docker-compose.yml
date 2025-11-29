@@ -1,0 +1,75 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: seatgrid-postgres
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=seatgrid
+    ports:
+      - "5432:5432"
+    volumes:
+      - seatgrid_data:/var/lib/postgresql/data
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: seatgrid-otel-collector
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./deploy/observability/otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    ports:
+      - "4317:4317" # OTLP gRPC
+      - "4318:4318" # OTLP HTTP
+      - "8889:8889" # Prometheus Exporter
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: seatgrid-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yaml
+      - --web.enable-lifecycle
+      - --web.enable-remote-write-receiver
+    volumes:
+      - ./deploy/observability/prometheus.yaml:/etc/prometheus/prometheus.yaml
+    ports:
+      - "9090:9090"
+
+  loki:
+    image: grafana/loki:latest
+    container_name: seatgrid-loki
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./deploy/observability/loki-config.yaml:/etc/loki/local-config.yaml
+    ports:
+      - "3100:3100"
+
+  tempo:
+    image: grafana/tempo:latest
+    container_name: seatgrid-tempo
+    command: [ "-config.file=/etc/tempo.yaml" ]
+    volumes:
+      - ./deploy/observability/tempo-config.yaml:/etc/tempo.yaml
+    ports:
+      - "3200:3200" # Tempo HTTP
+      # 4317 is exposed by otel-collector, tempo listens internally
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: seatgrid-grafana
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_DISABLE_SANITIZE_HTML=true
+    volumes:
+      - ./deploy/observability/grafana/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
+      - ./deploy/observability/grafana/dashboards.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml
+      - ./deploy/observability/grafana/dashboards:/var/lib/grafana/dashboards
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+      - loki
+      - tempo
+
+volumes:
+  seatgrid_data:

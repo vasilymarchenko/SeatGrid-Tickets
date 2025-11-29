@@ -1,0 +1,44 @@
+@host = http://localhost:5025
+
+### 1. Create Event
+# @name createEvent
+POST {{host}}/api/events
+Content-Type: application/json
+
+{
+  "name": "Taylor Swift - Eras Tour",
+  "date": "2025-06-15T19:00:00Z",
+  "rows": 10,
+  "cols": 10
+}
+
+### 2. Get Seats
+@eventId = {{createEvent.response.body.id}}
+GET {{host}}/api/events/{{eventId}}/seats
+
+### 3. Book Seats (User A)
+@eventId = {{createEvent.response.body.id}}
+POST {{host}}/api/bookings
+Content-Type: application/json
+
+{
+  "eventId": {{eventId}},
+  "userId": "user-a",
+  "seats": [
+    { "row": "1", "col": "1" },
+    { "row": "1", "col": "2" }
+  ]
+}
+
+### 4. Book Same Seats (User B) - Should Fail (409 Conflict)
+POST {{host}}/api/bookings
+Content-Type: application/json
+
+{
+  "eventId": {{eventId}},
+  "userId": "user-b",
+  "seats": [
+    { "row": "1", "col": "1" },
+    { "row": "1", "col": "2" }
+  ]
+}
