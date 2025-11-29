@@ -73,3 +73,6 @@ k6 run tests/k6/baseline_test.js
 
 *   [Project Requirements](Docs/project-requirements.md)
 *   [Learning Plan](Docs/learning-project-plan.md)
+*   [Phase 1 Plan](Docs/phase-1-plan.md)
+*   [Phase 2 Plan](Docs/phase-2-plan.md)
+*   **[Phase 2 Results](Docs/phase-2-results.md)** ✅ - Baseline performance established: 2.33s P95 latency under 2,000 concurrent users. System survived without crashes, bottlenecks identified.
