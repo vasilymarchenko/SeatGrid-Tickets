@@ -12,7 +12,6 @@ FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
 COPY ["src/SeatGrid.API/SeatGrid.API.csproj", "src/SeatGrid.API/"]
-COPY ["src/SeatGrid.Domain/SeatGrid.Domain.csproj", "src/SeatGrid.Domain/"]
 RUN dotnet restore "./src/SeatGrid.API/SeatGrid.API.csproj"
 COPY . .
 WORKDIR "/src/src/SeatGrid.API"
