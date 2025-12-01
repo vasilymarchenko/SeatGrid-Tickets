@@ -17,7 +17,20 @@ builder.Services.AddDbContext<SeatGridDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 builder.Services.AddScoped<IEventRepository, EventRepository>();
-builder.Services.AddScoped<IBookingService, BookingService>();
+
+// Configure booking service strategy based on configuration
+var bookingStrategy = builder.Configuration.GetValue<string>("Booking:Strategy") ?? "Pessimistic";
+switch (bookingStrategy.ToLowerInvariant())
+{
+    case "naive":
+        builder.Services.AddScoped<IBookingService, BookingNaiveService>();
+        break;
+    case "pessimistic":
+    default:
+        builder.Services.AddScoped<IBookingService, BookingPessimisticService>();
+        break;
+}
+
 builder.Services.AddScoped<IEventService, EventService>();
 
 // Add Redis distributed cache

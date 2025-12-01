@@ -11,6 +11,7 @@ services:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:8080
+      - Booking__Strategy=Pessimistic
     ports:
       - "5000:8080"
     healthcheck:

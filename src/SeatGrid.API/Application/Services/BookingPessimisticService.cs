@@ -9,11 +9,15 @@ using System.Data;
 
 namespace SeatGrid.API.Application.Services;
 
-public class BookingService : IBookingService
+/// <summary>
+/// Pessimistic locking booking implementation using PostgreSQL FOR UPDATE NOWAIT.
+/// Provides strong consistency guarantees under high concurrency by explicitly locking rows.
+/// </summary>
+public class BookingPessimisticService : IBookingService
 {
     private readonly SeatGridDbContext _context;
 
-    public BookingService(SeatGridDbContext context)
+    public BookingPessimisticService(SeatGridDbContext context)
     {
         _context = context;
     }
