@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
-using SeatGrid.API.Application.Interfaces;
 using SeatGrid.API.Domain.Entities;
+using SeatGrid.API.Domain.Interfaces;
 using SeatGrid.API.Infrastructure.Persistence;
 
 namespace SeatGrid.API.Infrastructure.Repositories;

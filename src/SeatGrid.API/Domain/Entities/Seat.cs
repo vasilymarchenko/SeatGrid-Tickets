@@ -10,7 +10,4 @@ public class Seat
     public string Col { get; set; } = string.Empty;
     public SeatStatus Status { get; set; }
     public string? CurrentHolderId { get; set; } // UserId or ReservationId
-
-    // Navigation property
-    public Event? Event { get; set; }
 }

@@ -1,6 +1,6 @@
 using SeatGrid.API.Domain.Entities;
 
-namespace SeatGrid.API.Application.Interfaces;
+namespace SeatGrid.API.Domain.Interfaces;
 
 public interface IEventRepository
 {

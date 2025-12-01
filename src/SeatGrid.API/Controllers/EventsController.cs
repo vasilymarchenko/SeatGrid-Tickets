@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using SeatGrid.API.Application.DTOs.Requests;
 using SeatGrid.API.Application.Interfaces;
 
 namespace SeatGrid.API.Controllers;
@@ -17,13 +18,14 @@ public class EventsController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> CreateEvent([FromBody] CreateEventRequest request)
     {
-        var newEvent = await _eventService.CreateEventAsync(request.Name, request.Date, request.Rows, request.Cols, CancellationToken.None);
-        
-        // We don't have seat count in return value of CreateEventAsync easily unless we change it.
-        // But for now, let's just return what we have.
-        // Or calculate it: rows * cols.
-        
-        return CreatedAtAction(nameof(GetSeats), new { id = newEvent.Id }, new { newEvent.Id, newEvent.Name, SeatCount = request.Rows * request.Cols });
+        var response = await _eventService.CreateEventAsync(
+            request.Name,
+            request.Date,
+            request.Rows,
+            request.Cols,
+            CancellationToken.None);
+
+        return CreatedAtAction(nameof(GetSeats), new { id = response.Id }, response);
     }
 
     [HttpGet("{id}/seats")]
@@ -37,5 +39,3 @@ public class EventsController : ControllerBase
         return Ok(seats);
     }
 }
-
-public record CreateEventRequest(string Name, DateTime Date, int Rows, int Cols);

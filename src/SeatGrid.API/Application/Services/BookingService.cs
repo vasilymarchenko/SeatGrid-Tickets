@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
+using SeatGrid.API.Application.Common;
 using SeatGrid.API.Application.Interfaces;
 using SeatGrid.API.Domain.Entities;
 using SeatGrid.API.Domain.Enums;
@@ -17,11 +18,12 @@ public class BookingService : IBookingService
         _context = context;
     }
 
-    public async Task<BookingResult> BookSeatsAsync(long eventId, string userId, List<(string Row, string Col)> seatPairs, CancellationToken cancellationToken)
+    public async Task<Result<BookingSuccess, BookingError>> BookSeatsAsync(long eventId, string userId, List<(string Row, string Col)> seatPairs, CancellationToken cancellationToken)
     {
         if (seatPairs == null || !seatPairs.Any())
         {
-            return new BookingResult(false, "No seats specified.");
+            return Result<BookingSuccess, BookingError>.Failure(
+                new BookingError("No seats specified."));
         }
 
         var distinctSeatPairs = seatPairs.Distinct().ToList();
@@ -38,7 +40,8 @@ public class BookingService : IBookingService
                 var foundPairs = seats.Select(s => (s.Row, s.Col)).ToHashSet();
                 var missingSeats = distinctSeatPairs.Where(p => !foundPairs.Contains(p)).ToList();
 
-                return new BookingResult(false, "One or more seats do not exist.", new { MissingSeats = missingSeats });
+                return Result<BookingSuccess, BookingError>.Failure(
+                    new BookingError("One or more seats do not exist.", new { MissingSeats = missingSeats }));
             }
 
             // Check availability
@@ -48,16 +51,17 @@ public class BookingService : IBookingService
 
             if (unavailableSeats.Any())
             {
-                return new BookingResult(false, "One or more seats are already booked.", new
-                {
-                    UnavailableSeats = unavailableSeats.Select(s => new
+                return Result<BookingSuccess, BookingError>.Failure(
+                    new BookingError("One or more seats are already booked.", new
                     {
-                        s.Row,
-                        s.Col,
-                        s.Status,
-                        BookedBy = s.CurrentHolderId
-                    })
-                });
+                        UnavailableSeats = unavailableSeats.Select(s => new
+                        {
+                            s.Row,
+                            s.Col,
+                            s.Status,
+                            BookedBy = s.CurrentHolderId
+                        })
+                    }));
             }
 
             // Book the seats: Update Status
@@ -70,12 +74,21 @@ public class BookingService : IBookingService
             await _context.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
 
-            return new BookingResult(true, "Booking successful", new { SeatCount = seats.Count });
+            return Result<BookingSuccess, BookingError>.Success(
+                new BookingSuccess(seats.Count));
+        }
+        catch (InvalidOperationException ex) when (ex.InnerException is PostgresException pgEx && pgEx.SqlState == "55P03")
+        {
+            // EF Core execution strategy wraps the PostgresException
+            await transaction.RollbackAsync(cancellationToken);
+            return Result<BookingSuccess, BookingError>.Failure(
+                new BookingError("Seats are currently locked by another transaction. Please try again."));
         }
         catch (PostgresException ex) when (ex.SqlState == "55P03") // Lock not available
         {
             await transaction.RollbackAsync(cancellationToken);
-            return new BookingResult(false, "Seats are currently locked by another transaction. Please try again.");
+            return Result<BookingSuccess, BookingError>.Failure(
+                new BookingError("Seats are currently locked by another transaction. Please try again."));
         }
         catch (Exception)
         {

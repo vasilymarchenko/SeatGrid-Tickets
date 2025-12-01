@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using SeatGrid.API.Infrastructure.Persistence;
 using SeatGrid.API.Application.Interfaces;
 using SeatGrid.API.Application.Services;
+using SeatGrid.API.Domain.Interfaces;
 using SeatGrid.API.Infrastructure.Repositories;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;

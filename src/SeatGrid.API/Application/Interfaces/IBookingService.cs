@@ -1,10 +1,12 @@
-using SeatGrid.API.Domain.Entities;
+using SeatGrid.API.Application.Common;
 
 namespace SeatGrid.API.Application.Interfaces;
 
 public interface IBookingService
 {
-    Task<BookingResult> BookSeatsAsync(long eventId, string userId, List<(string Row, string Col)> seats, CancellationToken cancellationToken);
+    Task<Result<BookingSuccess, BookingError>> BookSeatsAsync(long eventId, string userId, List<(string Row, string Col)> seats, CancellationToken cancellationToken);
 }
 
-public record BookingResult(bool Success, string Message, object? Data = null);
+public record BookingSuccess(int SeatCount);
+
+public record BookingError(string Message, object? Details = null);
