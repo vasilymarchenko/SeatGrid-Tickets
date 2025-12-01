@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SeatGrid.API.Data;
 using SeatGrid.Domain.Enums;
+using System.Data;
 
 namespace SeatGrid.API.Controllers;
 
@@ -19,44 +20,69 @@ public class BookingsController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> BookSeats([FromBody] BookingRequest request)
     {
-        // The "Write Bottleneck": Synchronous, transactional booking
-        
-        using var transaction = await _context.Database.BeginTransactionAsync();
+        // Validate input
+        if (request.Seats == null || !request.Seats.Any())
+        {
+            return BadRequest("No seats specified.");
+        }
+
+        using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
         try
         {
-            // 1. Fetch requested seats
-            // Note: In a real high-concurrency scenario, we might want 'FOR UPDATE' locking here.
-            // For now, we rely on EF Core's Optimistic Concurrency or standard transaction isolation.
-            
-            // Fix: EF Core cannot translate 'Contains' with complex objects (SeatPosition).
-            // We fetch a superset (matching Rows AND Cols) and filter in memory.
-            var requestedRows = request.Seats.Select(s => s.Row).Distinct().ToList();
-            var requestedCols = request.Seats.Select(s => s.Col).Distinct().ToList();
-
-            var candidateSeats = await _context.Seats
-                .Where(s => s.EventId == request.EventId && 
-                            requestedRows.Contains(s.Row) && 
-                            requestedCols.Contains(s.Col))
-                .ToListAsync();
-
-            var seats = candidateSeats
-                .Where(s => request.Seats.Any(rs => rs.Row == s.Row && rs.Col == s.Col))
+            // Build seat pairs
+            var seatPairs = request.Seats
+                .Select(s => (Row: s.Row, Col: s.Col))
+                .Distinct()
                 .ToList();
 
-            // 2. Validation
-            if (seats.Count != request.Seats.Count)
+            // Build VALUES clause for tuple IN
+            var valuesClause = string.Join(", ",
+                seatPairs.Select(p => $"('{p.Row.Replace("'", "''")}', '{p.Col.Replace("'", "''")}')"));
+
+            // Fetch and lock seats in one query
+            var seats = await _context.Seats
+                .FromSqlRaw($@"
+                    SELECT * FROM ""Seats""
+                    WHERE ""EventId"" = {{0}}
+                      AND (""Row"", ""Col"") IN ({valuesClause})
+                    FOR UPDATE NOWAIT",
+                        request.EventId)
+                .ToListAsync();
+
+            // Validate seat count
+            if (seats.Count != seatPairs.Count)
             {
-                return BadRequest("One or more seats do not exist.");
+                var foundPairs = seats.Select(s => (s.Row, s.Col)).ToHashSet();
+                var missingSeats = seatPairs.Where(p => !foundPairs.Contains(p)).ToList();
+
+                return BadRequest(new
+                {
+                    Message = "One or more seats do not exist.",
+                    MissingSeats = missingSeats
+                });
             }
 
-            // 3. Check Availability (The critical check)
-            if (seats.Any(s => s.Status != SeatStatus.Available))
+            // Check availability
+            var unavailableSeats = seats
+                .Where(s => s.Status != SeatStatus.Available)
+                .ToList();
+
+            if (unavailableSeats.Any())
             {
-                await transaction.RollbackAsync();
-                return Conflict("One or more seats are already booked.");
+                return Conflict(new
+                {
+                    Message = "One or more seats are already booked.",
+                    UnavailableSeats = unavailableSeats.Select(s => new
+                    {
+                        s.Row,
+                        s.Col,
+                        s.Status,
+                        BookedBy = s.CurrentHolderId
+                    })
+                });
             }
 
-            // 4. Update Status
+            // Book the seats: Update Status
             foreach (var seat in seats)
             {
                 seat.Status = SeatStatus.Booked;
@@ -68,10 +94,16 @@ public class BookingsController : ControllerBase
 
             return Ok(new { Message = "Booking successful", SeatCount = seats.Count });
         }
-        catch (Exception)
+        catch (Npgsql.PostgresException ex) when (ex.SqlState == "55P03") // Lock not available
         {
             await transaction.RollbackAsync();
-            throw;
+            return Conflict(new { Message = "Seats are currently locked by another transaction. Please try again." });
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync();
+            // TODO: Log exception
+            return StatusCode(500, "An error occurred while processing your booking.");
         }
     }
 }
