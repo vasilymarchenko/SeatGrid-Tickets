@@ -7,12 +7,10 @@ namespace SeatGrid.API.Application.Services;
 public class EventService : IEventService
 {
     private readonly IEventRepository _eventRepository;
-    private readonly IUnitOfWork _unitOfWork;
 
-    public EventService(IEventRepository eventRepository, IUnitOfWork unitOfWork)
+    public EventService(IEventRepository eventRepository)
     {
         _eventRepository = eventRepository;
-        _unitOfWork = unitOfWork;
     }
 
     public async Task<Event> CreateEventAsync(string name, DateTime date, int rows, int cols, CancellationToken cancellationToken)
@@ -44,7 +42,7 @@ public class EventService : IEventService
         }
 
         await _eventRepository.AddSeatsAsync(seats, cancellationToken);
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        await _eventRepository.SaveChangesAsync(cancellationToken);
 
         return newEvent;
     }

@@ -32,4 +32,9 @@ public class EventRepository : IEventRepository
             .ThenBy(s => s.Col)
             .ToListAsync(cancellationToken);
     }
+
+    public async Task SaveChangesAsync(CancellationToken cancellationToken)
+    {
+        await _context.SaveChangesAsync(cancellationToken);
+    }
 }

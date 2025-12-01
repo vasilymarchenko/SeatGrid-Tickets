@@ -1,19 +1,20 @@
+using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using SeatGrid.API.Application.Interfaces;
+using SeatGrid.API.Domain.Entities;
 using SeatGrid.API.Domain.Enums;
+using SeatGrid.API.Infrastructure.Persistence;
 using System.Data;
 
 namespace SeatGrid.API.Application.Services;
 
 public class BookingService : IBookingService
 {
-    private readonly ISeatRepository _seatRepository;
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly SeatGridDbContext _context;
 
-    public BookingService(ISeatRepository seatRepository, IUnitOfWork unitOfWork)
+    public BookingService(SeatGridDbContext context)
     {
-        _seatRepository = seatRepository;
-        _unitOfWork = unitOfWork;
+        _context = context;
     }
 
     public async Task<BookingResult> BookSeatsAsync(long eventId, string userId, List<(string Row, string Col)> seatPairs, CancellationToken cancellationToken)
@@ -25,10 +26,11 @@ public class BookingService : IBookingService
 
         var distinctSeatPairs = seatPairs.Distinct().ToList();
 
-        await _unitOfWork.BeginTransactionAsync(IsolationLevel.ReadCommitted);
+        using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
         try
         {
-            var seats = await _seatRepository.GetSeatsForBookingAsync(eventId, distinctSeatPairs, cancellationToken);
+            // Fetch and lock seats with PostgreSQL pessimistic locking
+            var seats = await GetSeatsForBookingAsync(eventId, distinctSeatPairs, cancellationToken);
 
             // Validate seat count
             if (seats.Count != distinctSeatPairs.Count)
@@ -65,20 +67,41 @@ public class BookingService : IBookingService
                 seat.CurrentHolderId = userId;
             }
 
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
-            await _unitOfWork.CommitTransactionAsync();
+            await _context.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
 
             return new BookingResult(true, "Booking successful", new { SeatCount = seats.Count });
         }
         catch (PostgresException ex) when (ex.SqlState == "55P03") // Lock not available
         {
-            await _unitOfWork.RollbackTransactionAsync();
+            await transaction.RollbackAsync(cancellationToken);
             return new BookingResult(false, "Seats are currently locked by another transaction. Please try again.");
         }
         catch (Exception)
         {
-            await _unitOfWork.RollbackTransactionAsync();
+            await transaction.RollbackAsync(cancellationToken);
             throw;
         }
+    }
+
+    private async Task<List<Seat>> GetSeatsForBookingAsync(long eventId, List<(string Row, string Col)> seatPairs, CancellationToken cancellationToken)
+    {
+        // Build VALUES clause for tuple IN with proper escaping
+        var valuesClause = string.Join(", ",
+            seatPairs.Select(p => $"('{p.Row.Replace("'", "''")}', '{p.Col.Replace("'", "''")}')"));
+
+        // Fetch and lock seats in one query using PostgreSQL row-level locking
+        // Note: valuesClause is built with SQL-escaped strings (single quotes doubled)
+        // The eventId parameter is properly parameterized via {0}
+#pragma warning disable EF1002 // Risk of vulnerability to SQL injection
+        return await _context.Seats
+            .FromSqlRaw($@"
+                SELECT * FROM ""Seats""
+                WHERE ""EventId"" = {{0}}
+                  AND (""Row"", ""Col"") IN ({valuesClause})
+                FOR UPDATE NOWAIT",
+                    eventId)
+            .ToListAsync(cancellationToken);
+#pragma warning restore EF1002 // Risk of vulnerability to SQL injection
     }
 }

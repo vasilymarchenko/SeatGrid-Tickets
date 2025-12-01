@@ -15,9 +15,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<SeatGridDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-builder.Services.AddScoped<ISeatRepository, SeatRepository>();
 builder.Services.AddScoped<IEventRepository, EventRepository>();
-builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped<IBookingService, BookingService>();
 builder.Services.AddScoped<IEventService, EventService>();
 
