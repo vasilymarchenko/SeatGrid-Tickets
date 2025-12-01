@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using SeatGrid.API.Domain.Entities;
 
-namespace SeatGrid.API.Data;
+namespace SeatGrid.API.Infrastructure.Persistence;
 
 public class SeatGridDbContext : DbContext
 {

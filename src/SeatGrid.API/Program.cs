@@ -1,5 +1,8 @@
 using Microsoft.EntityFrameworkCore;
-using SeatGrid.API.Data;
+using SeatGrid.API.Infrastructure.Persistence;
+using SeatGrid.API.Application.Interfaces;
+using SeatGrid.API.Application.Services;
+using SeatGrid.API.Infrastructure.Repositories;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
@@ -11,6 +14,12 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 builder.Services.AddDbContext<SeatGridDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+builder.Services.AddScoped<ISeatRepository, SeatRepository>();
+builder.Services.AddScoped<IEventRepository, EventRepository>();
+builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
+builder.Services.AddScoped<IBookingService, BookingService>();
+builder.Services.AddScoped<IEventService, EventService>();
 
 // Add Redis distributed cache
 builder.Services.AddStackExchangeRedisCache(options =>

@@ -1,4 +1,4 @@
-namespace SeatGrid.Domain.Enums;
+namespace SeatGrid.API.Domain.Enums;
 
 public enum SeatStatus
 {

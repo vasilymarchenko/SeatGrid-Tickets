@@ -1,4 +1,4 @@
-namespace SeatGrid.Domain.Entities;
+namespace SeatGrid.API.Domain.Entities;
 
 public class Event
 {

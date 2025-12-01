@@ -1,6 +1,6 @@
-using SeatGrid.Domain.Enums;
+using SeatGrid.API.Domain.Enums;
 
-namespace SeatGrid.Domain.Entities;
+namespace SeatGrid.API.Domain.Entities;
 
 public class Seat
 {

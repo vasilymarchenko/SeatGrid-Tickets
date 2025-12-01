@@ -7,8 +7,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SeatGrid.API", "src\SeatGrid.API\SeatGrid.API.csproj", "{F80C4CF0-5667-4C45-A621-670876D655F7}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SeatGrid.Domain", "src\SeatGrid.Domain\SeatGrid.Domain.csproj", "{86812089-E4B7-472B-A982-A51E9060EAF9}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -31,24 +29,14 @@ Global
 		{F80C4CF0-5667-4C45-A621-670876D655F7}.Release|x64.Build.0 = Release|Any CPU
 		{F80C4CF0-5667-4C45-A621-670876D655F7}.Release|x86.ActiveCfg = Release|Any CPU
 		{F80C4CF0-5667-4C45-A621-670876D655F7}.Release|x86.Build.0 = Release|Any CPU
-		{86812089-E4B7-472B-A982-A51E9060EAF9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{86812089-E4B7-472B-A982-A51E9060EAF9}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{86812089-E4B7-472B-A982-A51E9060EAF9}.Debug|x64.ActiveCfg = Debug|Any CPU
-		{86812089-E4B7-472B-A982-A51E9060EAF9}.Debug|x64.Build.0 = Debug|Any CPU
-		{86812089-E4B7-472B-A982-A51E9060EAF9}.Debug|x86.ActiveCfg = Debug|Any CPU
-		{86812089-E4B7-472B-A982-A51E9060EAF9}.Debug|x86.Build.0 = Debug|Any CPU
-		{86812089-E4B7-472B-A982-A51E9060EAF9}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{86812089-E4B7-472B-A982-A51E9060EAF9}.Release|Any CPU.Build.0 = Release|Any CPU
-		{86812089-E4B7-472B-A982-A51E9060EAF9}.Release|x64.ActiveCfg = Release|Any CPU
-		{86812089-E4B7-472B-A982-A51E9060EAF9}.Release|x64.Build.0 = Release|Any CPU
-		{86812089-E4B7-472B-A982-A51E9060EAF9}.Release|x86.ActiveCfg = Release|Any CPU
-		{86812089-E4B7-472B-A982-A51E9060EAF9}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{F80C4CF0-5667-4C45-A621-670876D655F7} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
-		{86812089-E4B7-472B-A982-A51E9060EAF9} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {CD956E3A-62F3-4B4D-A1EB-AB02F6E1086A}
 	EndGlobalSection
 EndGlobal

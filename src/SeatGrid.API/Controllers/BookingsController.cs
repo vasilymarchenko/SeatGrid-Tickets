@@ -1,8 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using SeatGrid.API.Data;
-using SeatGrid.Domain.Enums;
-using System.Data;
+using SeatGrid.API.Application.Interfaces;
 
 namespace SeatGrid.API.Controllers;
 
@@ -10,99 +7,42 @@ namespace SeatGrid.API.Controllers;
 [Route("api/[controller]")]
 public class BookingsController : ControllerBase
 {
-    private readonly SeatGridDbContext _context;
+    private readonly IBookingService _bookingService;
 
-    public BookingsController(SeatGridDbContext context)
+    public BookingsController(IBookingService bookingService)
     {
-        _context = context;
+        _bookingService = bookingService;
     }
 
     [HttpPost]
     public async Task<IActionResult> BookSeats([FromBody] BookingRequest request)
     {
-        // Validate input
         if (request.Seats == null || !request.Seats.Any())
         {
             return BadRequest("No seats specified.");
         }
 
-        using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
+        var seatPairs = request.Seats.Select(s => (s.Row, s.Col)).ToList();
+
         try
         {
-            // Build seat pairs
-            var seatPairs = request.Seats
-                .Select(s => (Row: s.Row, Col: s.Col))
-                .Distinct()
-                .ToList();
+            var result = await _bookingService.BookSeatsAsync(request.EventId, request.UserId, seatPairs, CancellationToken.None);
 
-            // Build VALUES clause for tuple IN
-            var valuesClause = string.Join(", ",
-                seatPairs.Select(p => $"('{p.Row.Replace("'", "''")}', '{p.Col.Replace("'", "''")}')"));
-
-            // Fetch and lock seats in one query
-            var seats = await _context.Seats
-                .FromSqlRaw($@"
-                    SELECT * FROM ""Seats""
-                    WHERE ""EventId"" = {{0}}
-                      AND (""Row"", ""Col"") IN ({valuesClause})
-                    FOR UPDATE NOWAIT",
-                        request.EventId)
-                .ToListAsync();
-
-            // Validate seat count
-            if (seats.Count != seatPairs.Count)
+            if (result.Success)
             {
-                var foundPairs = seats.Select(s => (s.Row, s.Col)).ToHashSet();
-                var missingSeats = seatPairs.Where(p => !foundPairs.Contains(p)).ToList();
-
-                return BadRequest(new
+                return Ok(new { result.Message, Data = result.Data });
+            }
+            else
+            {
+                if (result.Message.Contains("locked") || result.Message.Contains("already booked"))
                 {
-                    Message = "One or more seats do not exist.",
-                    MissingSeats = missingSeats
-                });
+                    return Conflict(new { result.Message, result.Data });
+                }
+                return BadRequest(new { result.Message, result.Data });
             }
-
-            // Check availability
-            var unavailableSeats = seats
-                .Where(s => s.Status != SeatStatus.Available)
-                .ToList();
-
-            if (unavailableSeats.Any())
-            {
-                return Conflict(new
-                {
-                    Message = "One or more seats are already booked.",
-                    UnavailableSeats = unavailableSeats.Select(s => new
-                    {
-                        s.Row,
-                        s.Col,
-                        s.Status,
-                        BookedBy = s.CurrentHolderId
-                    })
-                });
-            }
-
-            // Book the seats: Update Status
-            foreach (var seat in seats)
-            {
-                seat.Status = SeatStatus.Booked;
-                seat.CurrentHolderId = request.UserId;
-            }
-
-            await _context.SaveChangesAsync();
-            await transaction.CommitAsync();
-
-            return Ok(new { Message = "Booking successful", SeatCount = seats.Count });
         }
-        catch (Npgsql.PostgresException ex) when (ex.SqlState == "55P03") // Lock not available
+        catch (Exception)
         {
-            await transaction.RollbackAsync();
-            return Conflict(new { Message = "Seats are currently locked by another transaction. Please try again." });
-        }
-        catch (Exception ex)
-        {
-            await transaction.RollbackAsync();
-            // TODO: Log exception
             return StatusCode(500, "An error occurred while processing your booking.");
         }
     }

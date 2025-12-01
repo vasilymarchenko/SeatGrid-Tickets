@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
-using SeatGrid.API.Data;
+using SeatGrid.API.Infrastructure.Persistence;
 
 #nullable disable
 
@@ -25,7 +25,7 @@ namespace SeatGrid.API.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("SeatGrid.Domain.Entities.Event", b =>
+            modelBuilder.Entity("SeatGrid.API.Domain.Entities.Event", b =>
                 {
                     b.Property<long>("Id")
                         .ValueGeneratedOnAdd()
@@ -52,7 +52,7 @@ namespace SeatGrid.API.Migrations
                     b.ToTable("Events");
                 });
 
-            modelBuilder.Entity("SeatGrid.Domain.Entities.Seat", b =>
+            modelBuilder.Entity("SeatGrid.API.Domain.Entities.Seat", b =>
                 {
                     b.Property<long>("Id")
                         .ValueGeneratedOnAdd()
@@ -87,9 +87,9 @@ namespace SeatGrid.API.Migrations
                     b.ToTable("Seats");
                 });
 
-            modelBuilder.Entity("SeatGrid.Domain.Entities.Seat", b =>
+            modelBuilder.Entity("SeatGrid.API.Domain.Entities.Seat", b =>
                 {
-                    b.HasOne("SeatGrid.Domain.Entities.Event", "Event")
+                    b.HasOne("SeatGrid.API.Domain.Entities.Event", "Event")
                         .WithMany("Seats")
                         .HasForeignKey("EventId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -98,7 +98,7 @@ namespace SeatGrid.API.Migrations
                     b.Navigation("Event");
                 });
 
-            modelBuilder.Entity("SeatGrid.Domain.Entities.Event", b =>
+            modelBuilder.Entity("SeatGrid.API.Domain.Entities.Event", b =>
                 {
                     b.Navigation("Seats");
                 });
