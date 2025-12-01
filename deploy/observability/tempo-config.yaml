@@ -40,5 +40,9 @@ storage:
     local:
       path: /tmp/tempo/blocks
 
+query_frontend:
+  search:
+    max_duration: 0s
+
 overrides:
-  metrics_generator_processors: [service-graphs, span-metrics]
+  metrics_generator_processors: [service-graphs, span-metrics, local-blocks]

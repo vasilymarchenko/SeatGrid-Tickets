@@ -1,4 +1,4 @@
-namespace SeatGrid.Domain.Entities;
+namespace SeatGrid.API.Domain.Entities;
 
 public class Event
 {
@@ -7,7 +7,4 @@ public class Event
     public DateTime Date { get; set; }
     public int Rows { get; set; }
     public int Cols { get; set; }
-
-    // Navigation property
-    public ICollection<Seat> Seats { get; set; } = new List<Seat>();
 }

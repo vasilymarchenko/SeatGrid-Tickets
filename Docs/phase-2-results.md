@@ -54,93 +54,51 @@ POST /api/Bookings
 - **Sustain**: 2,000 VUs for 20 seconds
 - **Ramp-Down**: 2,000 → 0 VUs in 10 seconds
 
-### Key Metrics
+### Comparative Metrics: Naive vs. Optimistic vs. Pessimistic
 
-| Metric | Value | Target | Status |
-|--------|-------|--------|--------|
-| **Total Requests** | 41,465 | N/A | ✅ |
-| **Throughput** | 1,020 RPS | N/A | ✅ |
-| **HTTP Failures** | 99.60% (41,303) | Expected | ✅ |
-| **System Crashes (500s)** | 0 | 0 | ✅ |
-| **Avg Response Time** | 1.36s | <500ms | ❌ |
-| **P95 Latency** | 2.33s | <2s | ❌ |
-| **Max Latency** | 3.2s | N/A | ⚠️ |
-| **Successful Bookings** | ~162 (0.4%) | N/A | ✅ |
-| **Conflicts (409)** | ~41,303 (99.6%) | Expected | ✅ |
+We tested three distinct booking strategies to understand how different locking mechanisms handle extreme concurrency.
 
-### Latency Breakdown
-- **Successful Requests (200 OK)**: 629ms avg, 986ms P95
-- **Conflict Requests (409)**: Faster (exact metrics not isolated)
-- **Iteration Duration**: 1.47s avg (includes 100ms sleep)
+| Metric | Naive Strategy | Optimistic Strategy | Pessimistic Strategy | Target |
+| :--- | :--- | :--- | :--- | :--- |
+| **Total Requests** | 9,120 | **9,296** | 7,569 | N/A |
+| **Throughput** | ~210 RPS | ~207 RPS | 166 RPS | N/A |
+| **Success (200 OK)** | 100 (1.10%) | 100 (1.08%) | 100 (1.32%) | 100 Seats |
+| **Conflict (409)** | 8,133 (89.19%) | **8,619 (92.73%)** | 6,516 (86.10%) | Expected |
+| **Server Error (5xx)** | 886 (9.72%) | **404 (4.35%)** | 952 (12.58%) | 0 |
+| **Avg Latency** | 6.66s | **6.49s** | 7.86s | <500ms |
+| **P95 Latency** | 15.22s | **13.55s** | 15.25s | <2s |
 
 ---
 
 ## Test Results Analysis
 
-### What Went Well ✅
-1. **System Stability**: No crashes, no 500 errors under 2,000 concurrent users
-2. **Correctness**: No double-booking detected (all checks passed)
-3. **Proper HTTP Semantics**: Returns 200 (success) or 409 (conflict) appropriately
-4. **Observability**: Full telemetry captured (traces, metrics, logs)
+### 1. The Failure of Synchronous Processing
+Regardless of the locking strategy, **all implementations failed to meet performance targets**.
+- **Latency Explosion**: P95 latencies of 13-15 seconds are unacceptable. Users are waiting nearly 15 seconds just to be told "Sold Out".
+- **Database Saturation**: The database became the bottleneck. 2,000 concurrent connections (or requests fighting for a pool) overwhelmed the single PostgreSQL instance.
+- **High Error Rates**: The 5xx errors (4-12%) indicate connection pool exhaustion or timeouts, meaning the system is not just slow, but unstable under this load.
 
-### What Failed ❌
-1. **Latency Threshold Breached**: P95 of 2.33s exceeded the 2s target
-2. **Slow Conflict Detection**: Users wait 1-2+ seconds to be told "sold out"
-3. **Database Bottleneck**: Transaction queue causes serialization
+### 2. Strategy Comparison
 
-### Expected vs. Reality
+#### **Optimistic Locking (The Winner)**
+- **Best Stability**: Lowest error rate (4.35%) and highest number of handled requests (9,296).
+- **Why**: By reading data without locks and only checking versions at the end, it minimized the time each transaction held database resources.
+- **Trade-off**: It still hit the database for every request, leading to high latency, but it processed more "No" answers successfully than the others.
 
-**The 99.6% "Failure" Rate**:
-- This is **mathematically correct** and **desired behavior**
-- 100 seats ÷ 2,000 users = 5% theoretical max success rate
-- The system correctly rejected 1,938 users who couldn't get seats
-- **Not a bug, but latency for rejections is the problem**
+#### **Pessimistic Locking (The Loser)**
+- **Worst Performance**: Lowest throughput (166 RPS) and highest error rate (12.58%).
+- **Why**: `FOR UPDATE NOWAIT` is expensive. It forces the database to manage thousands of row locks. The overhead of acquiring, holding, and releasing these locks reduced the overall capacity of the system.
+- **Outcome**: Strong consistency came at the cost of availability and performance.
 
----
+#### **Naive Approach (The Baseline)**
+- **Middle Ground**: Performed better than Pessimistic but worse than Optimistic.
+- **Risk**: While it survived this test without double-booking (likely due to implicit transaction isolation levels), it is theoretically unsafe for production without explicit locking or versioning.
 
-## The Problem Illustrated
-
-### Timeline of the Thundering Herd
-
-```
-T+0s:  ┌─────────────────────────────────────┐
-       │ 100 Seats Available                 │
-       │ 2,000 Users Click "Buy" Simultaneously
-       └─────────────────────────────────────┘
-                      ↓
-                [All hit DB]
-                      ↓
-T+1s:  ┌─────────────────────────────────────┐
-       │ ~50 Seats Sold                      │
-       │ ~50 Transactions In Progress        │
-       │ ~1,900 Requests Queued/Waiting      │
-       └─────────────────────────────────────┘
-                      ↓
-T+2s:  ┌─────────────────────────────────────┐
-       │ ~100 Seats Sold (SOLD OUT)          │
-       │ ~1,900 Requests STILL processing    │
-       │ Each checks DB, gets 409, rollback  │
-       └─────────────────────────────────────┘
-                      ↓
-T+3s:  ┌─────────────────────────────────────┐
-       │ Last stragglers get rejected        │
-       │ Wasted ~5,700 DB transactions       │
-       │ (1,900 losers × 3 DB ops each)      │
-       └─────────────────────────────────────┘
-```
-
-### Root Cause: Pessimistic Reality, Optimistic Implementation
-
-Our current approach is **Optimistic Concurrency**:
-- Everyone tries simultaneously
-- Most fail and discover conflicts late
-- Each failure still pays full transaction cost
-
-**Why This Hurts**:
-1. **Database Connection Exhaustion**: PostgreSQL has limited connections; each blocked transaction holds one
-2. **Lock Contention**: Transactions waiting on row locks create cascading delays
-3. **CPU Waste**: 99.6% of DB work is checking already-sold seats
-4. **Poor UX**: Users wait 2+ seconds for a "No" answer
+### 3. The "Thundering Herd" Reality
+The test confirms that **database-level locking (optimistic or pessimistic) is insufficient** for high-concurrency inventory systems.
+- **99% Waste**: ~9,000 requests hit the database to buy 100 seats.
+- **Resource Drain**: The 8,900 failed requests consumed nearly as much DB CPU/IO as the 100 successful ones.
+- **Conclusion**: We must move the "No" decision upstream, away from the database.
 
 ---
 
@@ -162,7 +120,7 @@ Current implementation **prioritizes consistency** over latency:
 - Full ACID compliance (prevents races)
 
 **But we're paying for consistency we don't always need**:
-- The 1,900 losers don't need transactional guarantees
+- The ~9,000 losers don't need transactional guarantees
 - Checking a sold-out event shouldn't require a DB round-trip
 - The system "doesn't know it's sold out" until checking the DB
 

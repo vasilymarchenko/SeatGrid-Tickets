@@ -46,6 +46,13 @@ docker compose -f docker-compose.infra.yml -f docker-compose.app.yml up -d --bui
 ```
 The API will be available at `http://localhost:5000`.
 
+**Configuration**:
+The application uses a Strategy pattern for booking implementations. Configure via environment variable:
+*   `Booking__Strategy=Pessimistic` (default) - Uses PostgreSQL row-level locking (FOR UPDATE NOWAIT) for high-concurrency scenarios
+*   `Booking__Strategy=Naive` - Basic transaction isolation without explicit locking (baseline implementation)
+
+To switch strategies, modify the environment variable in `docker-compose.app.yml`.
+
 ### 3. Database Migrations
 The application is configured to apply migrations automatically on startup.
 To apply them manually:

@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
-using SeatGrid.Domain.Entities;
+using SeatGrid.API.Domain.Entities;
 
-namespace SeatGrid.API.Data;
+namespace SeatGrid.API.Infrastructure.Persistence;
 
 public class SeatGridDbContext : DbContext
 {
@@ -31,8 +31,9 @@ public class SeatGridDbContext : DbContext
             // Composite index for faster lookups and uniqueness per event
             entity.HasIndex(s => new { s.EventId, s.Row, s.Col }).IsUnique();
             
-            entity.HasOne(s => s.Event)
-                  .WithMany(e => e.Seats)
+            // Configure foreign key without navigation properties
+            entity.HasOne<Event>()
+                  .WithMany()
                   .HasForeignKey(s => s.EventId)
                   .OnDelete(DeleteBehavior.Cascade);
         });

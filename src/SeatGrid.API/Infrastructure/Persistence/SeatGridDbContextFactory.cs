@@ -1,17 +1,14 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
+using Microsoft.Extensions.Configuration;
+using System.IO;
 
-namespace SeatGrid.API.Data;
+namespace SeatGrid.API.Infrastructure.Persistence;
 
-/// <summary>
-/// Design-time factory for creating SeatGridDbContext instances.
-/// Used by EF Core CLI tools (dotnet ef migrations add, etc.).
-/// </summary>
 public class SeatGridDbContextFactory : IDesignTimeDbContextFactory<SeatGridDbContext>
 {
     public SeatGridDbContext CreateDbContext(string[] args)
     {
-        // Build configuration to read from appsettings.json
         var configuration = new ConfigurationBuilder()
             .SetBasePath(Directory.GetCurrentDirectory())
             .AddJsonFile("appsettings.json")
