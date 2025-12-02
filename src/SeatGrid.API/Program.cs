@@ -9,6 +9,7 @@ using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Exporter;
+using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -48,12 +49,23 @@ builder.Services.AddScoped<IBookingService>(serviceProvider =>
 
 builder.Services.AddScoped<IEventService, EventService>();
 
+// Add Redis connection multiplexer for direct Redis operations
+builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
+{
+    var configuration = sp.GetRequiredService<IConfiguration>();
+    var redisConnection = configuration.GetConnectionString("Redis") ?? "localhost:6379";
+    return ConnectionMultiplexer.Connect(redisConnection);
+});
+
 // Add Redis distributed cache
 builder.Services.AddStackExchangeRedisCache(options =>
 {
     options.Configuration = builder.Configuration.GetConnectionString("Redis");
     options.InstanceName = "SeatGrid:";
 });
+
+// Add cache services
+builder.Services.AddScoped<IAvailabilityCache, AvailabilityCache>();
 
 // Add health checks
 builder.Services.AddHealthChecks()
