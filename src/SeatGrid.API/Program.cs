@@ -66,6 +66,7 @@ builder.Services.AddStackExchangeRedisCache(options =>
 
 // Add cache services
 builder.Services.AddScoped<IAvailabilityCache, AvailabilityCache>();
+builder.Services.AddScoped<IBookedSeatsCache, BookedSeatsCache>();
 
 // Add health checks
 builder.Services.AddHealthChecks()
