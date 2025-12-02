@@ -9,10 +9,14 @@ namespace SeatGrid.API.Application.Services;
 public class EventService : IEventService
 {
     private readonly IEventRepository _eventRepository;
+    private readonly IAvailabilityCache _availabilityCache;
 
-    public EventService(IEventRepository eventRepository)
+    public EventService(
+        IEventRepository eventRepository,
+        IAvailabilityCache availabilityCache)
     {
         _eventRepository = eventRepository;
+        _availabilityCache = availabilityCache;
     }
 
     public async Task<EventResponse> CreateEventAsync(string name, DateTime date, int rows, int cols, CancellationToken cancellationToken)
@@ -47,13 +51,17 @@ public class EventService : IEventService
         await _eventRepository.AddSeatsAsync(seats, cancellationToken);
         await _eventRepository.SaveChangesAsync(cancellationToken);
 
+        // Initialize availability cache with total seat count
+        var totalSeats = rows * cols;
+        await _availabilityCache.SetAvailableCountAsync(newEvent.Id, totalSeats, cancellationToken);
+
         return new EventResponse(
             newEvent.Id,
             newEvent.Name,
             newEvent.Date,
             newEvent.Rows,
             newEvent.Cols,
-            rows * cols
+            totalSeats
         );
     }
 
