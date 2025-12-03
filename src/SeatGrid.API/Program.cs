@@ -10,6 +10,7 @@ using OpenTelemetry.Trace;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Exporter;
 using StackExchange.Redis;
+using SeatGrid.API.Application.Decorators;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -50,11 +51,31 @@ builder.Services.AddScoped<IBookingService>(serviceProvider =>
 builder.Services.AddScoped<IEventService, EventService>();
 
 // Add Redis connection multiplexer for direct Redis operations
+// At startup: Fail fast if Redis unavailable (better to crash than start degraded)
+// At runtime: Cache operations have try-catch for resilience
 builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
 {
     var configuration = sp.GetRequiredService<IConfiguration>();
+    var logger = sp.GetRequiredService<ILogger<Program>>();
     var redisConnection = configuration.GetConnectionString("Redis") ?? "localhost:6379";
-    return ConnectionMultiplexer.Connect(redisConnection);
+    
+    var options = ConfigurationOptions.Parse(redisConnection);
+    options.AbortOnConnectFail = true; // Fail fast at startup
+    options.ConnectTimeout = 5000;
+    options.SyncTimeout = 5000;
+    
+    logger.LogInformation("Connecting to Redis at {Connection}...", redisConnection);
+    
+    var multiplexer = ConnectionMultiplexer.Connect(options);
+    
+    if (!multiplexer.IsConnected)
+    {
+        throw new InvalidOperationException(
+            $"Failed to connect to Redis at {redisConnection}. Application cannot start without cache.");
+    }
+    
+    logger.LogInformation("Successfully connected to Redis at {Connection}", redisConnection);
+    return multiplexer;
 });
 
 // Add Redis distributed cache
@@ -64,9 +85,25 @@ builder.Services.AddStackExchangeRedisCache(options =>
     options.InstanceName = "SeatGrid:";
 });
 
-// Add cache services
-builder.Services.AddScoped<IAvailabilityCache, AvailabilityCache>();
-builder.Services.AddScoped<IBookedSeatsCache, BookedSeatsCache>();
+// Add cache services with decorators for observability
+// Core implementations
+builder.Services.AddScoped<AvailabilityCache>();
+builder.Services.AddScoped<BookedSeatsCache>();
+
+// Decorated versions (adds metrics)
+builder.Services.AddScoped<IAvailabilityCache>(sp =>
+{
+    var inner = sp.GetRequiredService<AvailabilityCache>();
+    var logger = sp.GetRequiredService<ILogger<InstrumentedAvailabilityCache>>();
+    return new InstrumentedAvailabilityCache(inner, logger);
+});
+
+builder.Services.AddScoped<IBookedSeatsCache>(sp =>
+{
+    var inner = sp.GetRequiredService<BookedSeatsCache>();
+    var logger = sp.GetRequiredService<ILogger<InstrumentedBookedSeatsCache>>();
+    return new InstrumentedBookedSeatsCache(inner, logger);
+});
 
 // Add health checks
 builder.Services.AddHealthChecks()
@@ -87,6 +124,23 @@ builder.Services.AddOpenApi();
 
 // --- OpenTelemetry Configuration ---
 const string serviceName = "SeatGrid.API";
+
+// Validate OTEL Collector is reachable at startup (smoke test)
+var otlpEndpoint = builder.Configuration.GetValue<string>("OTEL_EXPORTER_OTLP_ENDPOINT") 
+                   ?? "http://localhost:4318";
+try
+{
+    using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
+    var response = await httpClient.GetAsync($"{otlpEndpoint}/v1/metrics");
+    Console.WriteLine($"✓ OTEL Collector reachable at {otlpEndpoint}");
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"⚠ WARNING: OTEL Collector not reachable at {otlpEndpoint}");
+    Console.WriteLine($"⚠ Reason: {ex.Message}");
+    Console.WriteLine($"⚠ Telemetry will be lost! Check OTEL Collector deployment.");
+    // Don't crash - but operator is explicitly warned
+}
 
 builder.Logging.AddOpenTelemetry(options =>
 {
@@ -111,7 +165,10 @@ builder.Services.AddOpenTelemetry()
     .WithMetrics(metrics => metrics
         .AddAspNetCoreInstrumentation()
         .AddRuntimeInstrumentation()
+        .AddMeter("SeatGrid.API") // Add custom metrics from BookingMetrics
         .AddOtlpExporter());
+
+Console.WriteLine("✓ OpenTelemetry SDK configured");
 // --- End OpenTelemetry Configuration ---
 
 var app = builder.Build();
@@ -154,6 +211,21 @@ app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthC
 app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
 {
     Predicate = check => check.Tags.Contains("ready")
+});
+
+// Observability health endpoint - separate from functional health
+// Use this to monitor if telemetry pipeline is working
+app.MapGet("/health/observability", () =>
+{
+    // This endpoint itself generates metrics/traces
+    // If you can query this in Prometheus/Tempo, OTEL pipeline works
+    return Results.Ok(new
+    {
+        status = "healthy",
+        message = "If you see this metric in Prometheus, OTEL pipeline is working",
+        timestamp = DateTime.UtcNow,
+        serviceName = "SeatGrid.API"
+    });
 });
 
 app.Run();
