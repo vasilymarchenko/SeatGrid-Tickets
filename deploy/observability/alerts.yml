@@ -1,0 +1,81 @@
+groups:
+  - name: observability_pipeline
+    interval: 30s
+    rules:
+      # Alert if we stop receiving metrics from the app
+      - alert: TelemetryDataLoss
+        expr: |
+          (
+            rate(http_server_request_duration_seconds_count{service_name="SeatGrid.API"}[5m]) == 0
+            and
+            rate(http_server_request_duration_seconds_count{service_name="SeatGrid.API"}[1h] offset 1h) > 0
+          )
+        for: 5m
+        labels:
+          severity: critical
+          component: observability
+        annotations:
+          summary: "Telemetry data loss detected for SeatGrid.API"
+          description: "No metrics received from SeatGrid.API for 5 minutes, but app was sending metrics 1 hour ago. Check OTEL Collector and network connectivity."
+          dashboard: "http://grafana:3000/d/seatgrid-health"
+
+      # Alert if OTEL Collector itself is down
+      - alert: OTELCollectorDown
+        expr: up{job="otel-collector"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: observability
+        annotations:
+          summary: "OTEL Collector is down"
+          description: "Prometheus cannot scrape OTEL Collector at {{ $labels.instance }}. All telemetry will be lost!"
+          runbook: "Check OTEL Collector logs: docker logs otel-collector"
+
+      # Alert if observability health endpoint stops responding
+      - alert: ObservabilityHealthCheckFailing
+        expr: |
+          (
+            rate(http_server_request_duration_seconds_count{http_route="/health/observability",service_name="SeatGrid.API"}[5m]) == 0
+            and
+            rate(http_server_request_duration_seconds_count{service_name="SeatGrid.API"}[5m]) > 0
+          )
+        for: 3m
+        labels:
+          severity: warning
+          component: observability
+        annotations:
+          summary: "Observability health endpoint not being called"
+          description: "/health/observability endpoint hasn't been called in 5 minutes. Set up monitoring to poll this endpoint regularly."
+
+  - name: redis_health
+    interval: 30s
+    rules:
+      # Alert if cache error rate is high (from your existing metrics)
+      - alert: RedisHighErrorRate
+        expr: |
+          (
+            sum(rate(seatgrid_api_cache_checks_total{result="error"}[2m])) 
+            / 
+            sum(rate(seatgrid_api_cache_checks_total[2m]))
+          ) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+          component: cache
+        annotations:
+          summary: "Redis error rate above 5%"
+          description: "{{ $value | humanizePercentage }} of cache operations are failing. App is degraded to database-only mode."
+          dashboard: "http://grafana:3000/d/seatgrid-health"
+
+      # Alert if database load spikes (indicating Redis cache failure)
+      - alert: DatabaseLoadSpike
+        expr: |
+          rate(seatgrid_api_database_queries_total[5m]) > 100
+        for: 5m
+        labels:
+          severity: warning
+          component: cache
+        annotations:
+          summary: "Database query rate abnormally high"
+          description: "Database receiving {{ $value | humanize }} queries/sec. This suggests Redis cache is not working."
+          dashboard: "http://grafana:3000/d/seatgrid-health"

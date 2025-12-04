@@ -36,6 +36,7 @@ services:
       - --web.enable-remote-write-receiver
     volumes:
       - ./deploy/observability/prometheus.yaml:/etc/prometheus/prometheus.yaml
+      - ./deploy/observability/alerts.yml:/etc/prometheus/alerts.yml
     ports:
       - "9090:9090"
 

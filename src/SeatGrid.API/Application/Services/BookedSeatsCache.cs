@@ -27,28 +27,20 @@ public class BookedSeatsCache : IBookedSeatsCache
 
     public async Task<HashSet<string>> GetBookedSeatKeysAsync(long eventId, CancellationToken cancellationToken)
     {
-        try
-        {
-            var db = _redis.GetDatabase();
-            var key = GetCacheKey(eventId);
+        var db = _redis.GetDatabase();
+        var key = GetCacheKey(eventId);
 
-            // Redis SMEMBERS returns all members of a set
-            var members = await db.SetMembersAsync(key);
+        // Redis SMEMBERS returns all members of a set
+        var members = await db.SetMembersAsync(key);
 
-            var bookedSeats = members
-                .Select(m => m.ToString())
-                .ToHashSet();
+        var bookedSeats = members
+            .Select(m => m.ToString())
+            .ToHashSet();
 
-            _logger.LogDebug("Cache: Event {EventId} has {Count} booked seats in cache", 
-                eventId, bookedSeats.Count);
+        _logger.LogDebug("Cache: Event {EventId} has {Count} booked seats in cache", 
+            eventId, bookedSeats.Count);
 
-            return bookedSeats;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to get booked seats for event {EventId} from cache", eventId);
-            return new HashSet<string>(); // Fail gracefully - return empty set, caller will query DB
-        }
+        return bookedSeats;
     }
 
     public async Task AddBookedSeatsAsync(long eventId, List<(string Row, string Col)> seats, CancellationToken cancellationToken)
@@ -92,26 +84,17 @@ public class BookedSeatsCache : IBookedSeatsCache
     /// </summary>
     public async Task<bool> IsSeatBookedAsync(long eventId, string row, string col, CancellationToken cancellationToken)
     {
-        try
-        {
-            var db = _redis.GetDatabase();
-            var key = GetCacheKey(eventId);
-            var seatKey = $"{row}-{col}";
+        var db = _redis.GetDatabase();
+        var key = GetCacheKey(eventId);
+        var seatKey = $"{row}-{col}";
 
-            // Redis SISMEMBER checks if value is member of set - O(1) operation
-            var isBooked = await db.SetContainsAsync(key, seatKey);
+        // Redis SISMEMBER checks if value is member of set - O(1) operation
+        var isBooked = await db.SetContainsAsync(key, seatKey);
 
-            _logger.LogDebug("Cache: Seat {SeatKey} in event {EventId} is {Status}", 
-                seatKey, eventId, isBooked ? "BOOKED" : "NOT CACHED");
+        _logger.LogDebug("Cache: Seat {SeatKey} in event {EventId} is {Status}", 
+            seatKey, eventId, isBooked ? "BOOKED" : "NOT CACHED");
 
-            return isBooked;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to check if seat {Row}-{Col} is booked for event {EventId}", 
-                row, col, eventId);
-            return false; // Fail gracefully - return "not booked", let DB be the authority
-        }
+        return isBooked;
     }
 
     private static string GetCacheKey(long eventId) => $"{KeyPrefix}:{eventId}:{KeySuffix}";
