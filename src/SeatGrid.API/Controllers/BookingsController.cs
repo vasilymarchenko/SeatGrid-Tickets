@@ -10,13 +10,20 @@ namespace SeatGrid.API.Controllers;
 public class BookingsController : ControllerBase
 {
     private readonly IBookingService _bookingService;
+    private readonly IBookedSeatsCache _bookedSeatsCache;
+#pragma warning disable CS0612 // Type or member is obsolete
     private readonly IAvailabilityCache _availabilityCache;
+#pragma warning restore CS0612 // Type or member is obsolete
 
     public BookingsController(
         IBookingService bookingService,
+        IBookedSeatsCache bookedSeatsCache,
+#pragma warning disable CS0612 // Type or member is obsolete
         IAvailabilityCache availabilityCache)
+#pragma warning restore CS0612 // Type or member is obsolete
     {
         _bookingService = bookingService;
+        _bookedSeatsCache = bookedSeatsCache;
         _availabilityCache = availabilityCache;
     }
 
@@ -28,57 +35,73 @@ public class BookingsController : ControllerBase
             return BadRequest(new BookingErrorResponse(false, "No seats specified."));
         }
 
-        // Fast-path: Check available seat count from cache
-        var availableCount = await _availabilityCache.GetAvailableCountAsync(
-            request.EventId, 
-            CancellationToken.None);
-
-        if (availableCount.HasValue)
-        {
-            // Event sold out - instant rejection
-            if (availableCount == 0)
-            {
-                return Conflict(new BookingErrorResponse(false, 
-                    "Event is sold out. No seats available."));
-            }
-
-            // Not enough seats available
-            if (availableCount < request.Seats.Count)
-            {
-                return Conflict(new BookingErrorResponse(false, 
-                    $"Only {availableCount} seats available, you requested {request.Seats.Count}."));
-            }
-        }
-
-        // Proceed to booking service
         var seatPairs = request.Seats.Select(s => (s.Row, s.Col)).ToList();
 
-        var result = await _bookingService.BookSeatsAsync(
-            request.EventId,
-            request.UserId,
-            seatPairs,
+        // 1. Redis Gatekeeper: Try to reserve specific seats atomically
+        // This prevents 99.9% of conflicts from hitting the DB
+        var reserved = await _bookedSeatsCache.TryReserveSeatsAsync(
+            request.EventId, 
+            seatPairs, 
             CancellationToken.None);
 
-        // Update cache on successful booking
-        if (result.IsSuccess)
+        if (!reserved)
         {
-            var success = result.GetSuccessOrThrow();
-            await _availabilityCache.DecrementAvailableCountAsync(
-                request.EventId, 
-                success.SeatCount, 
-                CancellationToken.None);
+            return Conflict(new BookingErrorResponse(false, 
+                "One or more seats are already reserved (cache hit)."));
         }
 
-        return result.Match<IActionResult>(
-            onSuccess: success => Ok(new BookingResponse(true, "Booking successful", success.SeatCount)),
-            onFailure: error =>
+        try
+        {
+            // 2. DB Transaction (Optimistic Lock)
+            var result = await _bookingService.BookSeatsAsync(
+                request.EventId,
+                request.UserId,
+                seatPairs,
+                CancellationToken.None);
+
+            if (result.IsSuccess)
             {
+                // Success! 
+                // Note: We don't need to update BookedSeatsCache because we already reserved them in Step 1
+                var success = result.GetSuccessOrThrow();
+
+                // Update legacy availability counter for UI/Monitoring purposes (Best Effort)
+                // This is not used for booking logic anymore, but keeps the "Seats Available" counter accurate
+#pragma warning disable CS0612 // Type or member is obsolete
+                await _availabilityCache.DecrementAvailableCountAsync(
+                    request.EventId, 
+                    success.SeatCount, 
+                    CancellationToken.None);
+#pragma warning restore CS0612 // Type or member is obsolete
+                
+                return Ok(new BookingResponse(true, "Booking successful", success.SeatCount));
+            }
+            else
+            {
+                // 3. Compensation: Booking failed (e.g. DB constraint, validation error)
+                // We must release the seats in Redis so others can try
+                await _bookedSeatsCache.ReleaseSeatsAsync(
+                    request.EventId, 
+                    seatPairs, 
+                    CancellationToken.None);
+
+                var error = result.GetErrorOrThrow();
+
                 if (error.Message.Contains("locked") || error.Message.Contains("already booked"))
                 {
                     return Conflict(new BookingErrorResponse(false, error.Message, error.Details));
                 }
                 return BadRequest(new BookingErrorResponse(false, error.Message, error.Details));
             }
-        );
+        }
+        catch (Exception)
+        {
+            // 4. Compensation on Crash: Ensure we don't leave ghost seats if the app crashes
+            await _bookedSeatsCache.ReleaseSeatsAsync(
+                request.EventId, 
+                seatPairs, 
+                CancellationToken.None);
+            throw;
+        }
     }
 }

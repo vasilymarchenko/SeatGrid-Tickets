@@ -15,16 +15,13 @@ namespace SeatGrid.API.Application.Services;
 public class BookingOptimisticService : IBookingService
 {
     private readonly SeatGridDbContext _context;
-    private readonly IBookedSeatsCache _bookedSeatsCache;
     private readonly ILogger<BookingOptimisticService> _logger;
 
     public BookingOptimisticService(
         SeatGridDbContext context,
-        IBookedSeatsCache bookedSeatsCache,
         ILogger<BookingOptimisticService> logger)
     {
         _context = context;
-        _bookedSeatsCache = bookedSeatsCache;
         _logger = logger;
     }
 
@@ -44,27 +41,6 @@ public class BookingOptimisticService : IBookingService
 
         try
         {
-            // FAST-PATH: Check booked seats cache before hitting database
-            var bookedSeatsInCache = await _bookedSeatsCache.GetBookedSeatKeysAsync(eventId, cancellationToken);
-            
-            if (bookedSeatsInCache.Any())
-            {
-                var alreadyBooked = distinctSeatPairs
-                    .Where(p => bookedSeatsInCache.Contains($"{p.Row}-{p.Col}"))
-                    .ToList();
-
-                if (alreadyBooked.Any())
-                {
-                    _logger.LogDebug("Fast-path rejection: {Count} seats already booked (cache hit)", alreadyBooked.Count);
-                    
-                    return Result<BookingSuccess, BookingError>.Failure(
-                        new BookingError("One or more seats are already booked (cached).", new
-                        {
-                            AlreadyBooked = alreadyBooked.Select(s => new { s.Row, s.Col })
-                        }));
-                }
-            }
-
             // Read seats WITHOUT locking - optimistic approach assumes low contention
             var seats = await GetSeatsAsync(eventId, distinctSeatPairs, cancellationToken);
 
@@ -119,11 +95,8 @@ public class BookingOptimisticService : IBookingService
                 return Result<BookingSuccess, BookingError>.Failure(
                     new BookingError("Booking conflict detected. Some seats may have been modified by another transaction."));
             }
-
-            // Update cache with newly booked seats (best-effort, fire-and-forget style)
-            await _bookedSeatsCache.AddBookedSeatsAsync(eventId, distinctSeatPairs, cancellationToken);
             
-            _logger.LogDebug("Successfully booked {Count} seats, cache updated", seats.Count);
+            _logger.LogDebug("Successfully booked {Count} seats", seats.Count);
 
             return Result<BookingSuccess, BookingError>.Success(
                 new BookingSuccess(seats.Count));

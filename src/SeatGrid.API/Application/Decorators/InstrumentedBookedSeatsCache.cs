@@ -126,4 +126,65 @@ public class InstrumentedBookedSeatsCache : IBookedSeatsCache
             BookingMetrics.RecordCacheOperationDuration(sw.Elapsed.TotalMilliseconds, CacheType, "check_single");
         }
     }
+
+    public async Task<bool> TryReserveSeatsAsync(long eventId, List<(string Row, string Col)> seats, CancellationToken cancellationToken)
+    {
+        var sw = Stopwatch.StartNew();
+        try
+        {
+            var result = await _inner.TryReserveSeatsAsync(eventId, seats, cancellationToken);
+            
+            if (result)
+            {
+                BookingMetrics.RecordCacheCheck(CacheType, "reserved");
+            }
+            else
+            {
+                BookingMetrics.RecordCacheCheck(CacheType, "conflict");
+            }
+            
+            return result;
+        }
+        finally
+        {
+            sw.Stop();
+            BookingMetrics.RecordCacheOperationDuration(sw.Elapsed.TotalMilliseconds, CacheType, "try_reserve");
+        }
+    }
+
+    public async Task ReleaseSeatsAsync(long eventId, List<(string Row, string Col)> seats, CancellationToken cancellationToken)
+    {
+        var sw = Stopwatch.StartNew();
+        try
+        {
+            await _inner.ReleaseSeatsAsync(eventId, seats, cancellationToken);
+            BookingMetrics.RecordCacheCheck(CacheType, "released");
+        }
+        finally
+        {
+            sw.Stop();
+            BookingMetrics.RecordCacheOperationDuration(sw.Elapsed.TotalMilliseconds, CacheType, "release");
+        }
+    }
+
+    public async Task<List<string>> GetStaleSeatKeysAsync(long eventId, TimeSpan staleThreshold, CancellationToken cancellationToken)
+    {
+        var sw = Stopwatch.StartNew();
+        try
+        {
+            var result = await _inner.GetStaleSeatKeysAsync(eventId, staleThreshold, cancellationToken);
+            
+            if (result.Any())
+            {
+                BookingMetrics.RecordCacheCheck(CacheType, "stale_found");
+            }
+            
+            return result;
+        }
+        finally
+        {
+            sw.Stop();
+            BookingMetrics.RecordCacheOperationDuration(sw.Elapsed.TotalMilliseconds, CacheType, "get_stale");
+        }
+    }
 }

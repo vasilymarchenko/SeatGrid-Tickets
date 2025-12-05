@@ -105,6 +105,9 @@ builder.Services.AddScoped<IBookedSeatsCache>(sp =>
     return new InstrumentedBookedSeatsCache(inner, logger);
 });
 
+// Register background services
+builder.Services.AddHostedService<CacheReconciliationService>();
+
 // Add health checks
 builder.Services.AddHealthChecks()
     .AddNpgSql(

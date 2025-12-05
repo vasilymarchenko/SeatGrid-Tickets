@@ -10,13 +10,16 @@ public class EventService : IEventService
 {
     private readonly IEventRepository _eventRepository;
     private readonly IAvailabilityCache _availabilityCache;
+    private readonly IBookedSeatsCache _bookedSeatsCache;
 
     public EventService(
         IEventRepository eventRepository,
-        IAvailabilityCache availabilityCache)
+        IAvailabilityCache availabilityCache,
+        IBookedSeatsCache bookedSeatsCache)
     {
         _eventRepository = eventRepository;
         _availabilityCache = availabilityCache;
+        _bookedSeatsCache = bookedSeatsCache;
     }
 
     public async Task<EventResponse> CreateEventAsync(string name, DateTime date, int rows, int cols, CancellationToken cancellationToken)
@@ -73,5 +76,23 @@ public class EventService : IEventService
             s.Col,
             s.Status.ToString()
         ));
+    }
+
+    public async Task WarmupCacheAsync(long eventId, CancellationToken cancellationToken)
+    {
+        // 1. Get all booked seats from DB
+        var allSeats = await _eventRepository.GetSeatsByEventIdAsync(eventId, cancellationToken);
+        var bookedSeats = allSeats
+            .Where(s => s.Status == SeatStatus.Booked)
+            .Select(s => (s.Row, s.Col))
+            .ToList();
+
+        if (!bookedSeats.Any())
+            return;
+
+        // 2. Load them into Redis
+        // We use the IBookedSeatsCache to populate the "locks"
+        // Note: We need to inject IBookedSeatsCache into EventService
+        await _bookedSeatsCache.AddBookedSeatsAsync(eventId, bookedSeats, cancellationToken);
     }
 }

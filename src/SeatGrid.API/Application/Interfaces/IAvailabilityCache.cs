@@ -4,6 +4,7 @@ namespace SeatGrid.API.Application.Interfaces;
 /// Cache service for tracking available seat counts per event.
 /// Enables fast-path rejection for sold-out events without database queries.
 /// </summary>
+[Obsolete("Use IBookedSeatsCache for seat-level locking. This interface is kept for legacy support and UI counters.")]
 public interface IAvailabilityCache
 {
     /// <summary>
