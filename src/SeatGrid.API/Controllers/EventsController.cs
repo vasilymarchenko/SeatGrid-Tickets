@@ -38,4 +38,11 @@ public class EventsController : ControllerBase
 
         return Ok(seats);
     }
+
+    [HttpPost("{id}/warmup")]
+    public async Task<IActionResult> WarmupCache(long id)
+    {
+        await _eventService.WarmupCacheAsync(id, CancellationToken.None);
+        return Ok(new { message = $"Cache warmed up for event {id}" });
+    }
 }

@@ -19,6 +19,12 @@ public class EventRepository : IEventRepository
         await _context.Events.AddAsync(evt, cancellationToken);
     }
 
+    public async Task<List<Event>> GetActiveEventsAsync(CancellationToken cancellationToken)
+    {
+        // For simplicity, return all events. In production, filter by Date > Now
+        return await _context.Events.ToListAsync(cancellationToken);
+    }
+
     public async Task AddSeatsAsync(IEnumerable<Seat> seats, CancellationToken cancellationToken)
     {
         await _context.Seats.AddRangeAsync(seats, cancellationToken);
@@ -30,6 +36,13 @@ public class EventRepository : IEventRepository
             .Where(s => s.EventId == eventId)
             .OrderBy(s => s.Row)
             .ThenBy(s => s.Col)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<List<Seat>> GetAvailableSeatsAsync(long eventId, CancellationToken cancellationToken)
+    {
+        return await _context.Seats
+            .Where(s => s.EventId == eventId && s.Status == Domain.Enums.SeatStatus.Available)
             .ToListAsync(cancellationToken);
     }
 

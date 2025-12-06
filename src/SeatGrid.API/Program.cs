@@ -87,23 +87,18 @@ builder.Services.AddStackExchangeRedisCache(options =>
 
 // Add cache services with decorators for observability
 // Core implementations
-builder.Services.AddScoped<AvailabilityCache>();
 builder.Services.AddScoped<BookedSeatsCache>();
 
 // Decorated versions (adds metrics)
-builder.Services.AddScoped<IAvailabilityCache>(sp =>
-{
-    var inner = sp.GetRequiredService<AvailabilityCache>();
-    var logger = sp.GetRequiredService<ILogger<InstrumentedAvailabilityCache>>();
-    return new InstrumentedAvailabilityCache(inner, logger);
-});
-
 builder.Services.AddScoped<IBookedSeatsCache>(sp =>
 {
     var inner = sp.GetRequiredService<BookedSeatsCache>();
     var logger = sp.GetRequiredService<ILogger<InstrumentedBookedSeatsCache>>();
     return new InstrumentedBookedSeatsCache(inner, logger);
 });
+
+// Register background services
+builder.Services.AddHostedService<CacheReconciliationService>();
 
 // Add health checks
 builder.Services.AddHealthChecks()
