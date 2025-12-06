@@ -1,8 +1,8 @@
 # Phase 3.1 Results: Redis Gatekeeper & Stability
 
-**Date:** December 3, 2025
-**System:** SeatGrid Booking API (Redis Gatekeeper Strategy)
-**Test:** k6 crash_test.js - 2000 concurrent VUs, 100 seats, 40s duration
+- **Date:** December 3, 2025
+- **System:** SeatGrid Booking API (Redis Gatekeeper Strategy with Lua script)
+- **Test:** k6 crash_test.js - 2000 concurrent VUs, 100 seats, 40s duration
 
 ---
 
@@ -16,10 +16,12 @@ We have successfully eliminated the **65% performance variance** observed in Pha
 
 ## 2. The Problem: "Check-Then-Act" Race Conditions
 
-In Phase 3.0, we used a "Check Availability -> Book in DB" flow. This had a critical flaw:
+In [Phase 3.0](Docs/phase-3-results.md), we used a "Check Availability -> Book in DB" flow. This had a critical flaw:
 1.  **Race Condition:** 2000 users checked the cache simultaneously. All saw "Available".
 2.  **Thundering Herd:** All 2000 users hit the database.
 3.  **DB Saturation:** The database had to reject 1900+ transactions, causing connection pool exhaustion and high latency variance (115ms to 2.58s).
+
+[The problem was deeply analysed ](Docs/phase-3-performance-variance-analysis.md), but the conclusions were wrong.
 
 ---
 

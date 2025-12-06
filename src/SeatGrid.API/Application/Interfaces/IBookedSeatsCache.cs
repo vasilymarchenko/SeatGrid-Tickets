@@ -8,15 +8,6 @@ namespace SeatGrid.API.Application.Interfaces;
 public interface IBookedSeatsCache
 {
     /// <summary>
-    /// Gets all booked seat keys for an event.
-    /// </summary>
-    /// <param name="eventId">The event identifier</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Set of booked seat keys in format "Row-Col", or empty set if not cached</returns>
-    [Obsolete("Use TryReserveSeatsAsync for atomic checking and reservation.")]
-    Task<HashSet<string>> GetBookedSeatKeysAsync(long eventId, CancellationToken cancellationToken);
-
-    /// <summary>
     /// Adds newly booked seats to the cache.
     /// Used for cache warm-up or manual synchronization.
     /// </summary>
@@ -24,19 +15,6 @@ public interface IBookedSeatsCache
     /// <param name="seats">List of seat row/column pairs that were booked</param>
     /// <param name="cancellationToken">Cancellation token</param>
     Task AddBookedSeatsAsync(long eventId, List<(string Row, string Col)> seats, CancellationToken cancellationToken);
-
-    /// <summary>
-    /// Checks if a specific seat is marked as booked in cache.
-    /// Note: For checking multiple seats, prefer GetBookedSeatKeysAsync() + in-memory filtering
-    /// to avoid multiple Redis round-trips.
-    /// </summary>
-    /// <param name="eventId">The event identifier</param>
-    /// <param name="row">Seat row</param>
-    /// <param name="col">Seat column</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>True if seat is in booked cache, false otherwise</returns>
-    [Obsolete("Use TryReserveSeatsAsync for atomic checking.")]
-    Task<bool> IsSeatBookedAsync(long eventId, string row, string col, CancellationToken cancellationToken);
 
     /// <summary>
     /// Atomically checks and reserves specific seats in the cache.

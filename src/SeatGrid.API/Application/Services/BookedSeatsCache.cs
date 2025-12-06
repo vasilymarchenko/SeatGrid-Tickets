@@ -12,14 +12,12 @@ public class BookedSeatsCache : IBookedSeatsCache
     private readonly IConnectionMultiplexer _redis;
     private readonly ILogger<BookedSeatsCache> _logger;
 
-    // Cache key pattern: "event:{eventId}:seats"
-    private const string KeyPrefix = "event";
-    private const string KeySuffix = "seats";
+    private static string GetCacheKey(long eventId) => $"event:{eventId}:seats";
 
     // Lua script for atomic reservation
-    // KEYS[1] = key
-    // ARGV[1] = timestamp
-    // ARGV[2...] = seat keys (Row-Col)
+    // KEYS[1] = "event:{eventId}:seats"
+    // ARGV[1] = timestamp (current UTC ticks)
+    // ARGV[2...] = seat identifiers ("Row-Col" format, e.g., "A-5", "B-12")
     private const string ReserveScript = @"
         local key = KEYS[1]
         local timestamp = ARGV[1]
@@ -58,24 +56,6 @@ public class BookedSeatsCache : IBookedSeatsCache
         _logger = logger;
     }
 
-    public async Task<HashSet<string>> GetBookedSeatKeysAsync(long eventId, CancellationToken cancellationToken)
-    {
-        var db = _redis.GetDatabase();
-        var key = GetCacheKey(eventId);
-
-        // HKEYS returns all field names in the hash
-        var members = await db.HashKeysAsync(key);
-
-        var bookedSeats = members
-            .Select(m => m.ToString())
-            .ToHashSet();
-
-        _logger.LogDebug("Cache: Event {EventId} has {Count} booked seats in cache", 
-            eventId, bookedSeats.Count);
-
-        return bookedSeats;
-    }
-
     public async Task AddBookedSeatsAsync(long eventId, List<(string Row, string Col)> seats, CancellationToken cancellationToken)
     {
         if (seats == null || !seats.Any())
@@ -103,18 +83,9 @@ public class BookedSeatsCache : IBookedSeatsCache
         }
     }
 
-    public async Task<bool> IsSeatBookedAsync(long eventId, string row, string col, CancellationToken cancellationToken)
-    {
-        var db = _redis.GetDatabase();
-        var key = GetCacheKey(eventId);
-        var seatKey = $"{row}-{col}";
-
-        return await db.HashExistsAsync(key, seatKey);
-    }
-
     public async Task<bool> TryReserveSeatsAsync(long eventId, List<(string Row, string Col)> seats, CancellationToken cancellationToken)
     {
-        if (seats == null || !seats.Any()) return false;
+        if (seats == null || seats.Count == 0) return false;
 
         try
         {
@@ -212,6 +183,4 @@ public class BookedSeatsCache : IBookedSeatsCache
 
         return staleKeys;
     }
-
-    private static string GetCacheKey(long eventId) => $"{KeyPrefix}:{eventId}:{KeySuffix}";
 }

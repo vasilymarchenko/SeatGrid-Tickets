@@ -1,8 +1,8 @@
 # Performance Variance Analysis: Crash Test Results
 
-**Date:** December 3, 2025  
-**System:** SeatGrid Booking API (Optimistic Locking Strategy)  
-**Test:** k6 crash_test.js - 2000 concurrent VUs, 100 seats, 40s duration
+- **Date:** December 3, 2025  
+- **System:** SeatGrid Booking API ([two-layer cache architecture](Docs/phase-3-results.md)) 
+- **Test:** k6 crash_test.js - 2000 concurrent VUs, 100 seats, 40s duration
 
 ---
 

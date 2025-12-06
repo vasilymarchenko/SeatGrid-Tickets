@@ -11,20 +11,13 @@ public class BookingsController : ControllerBase
 {
     private readonly IBookingService _bookingService;
     private readonly IBookedSeatsCache _bookedSeatsCache;
-#pragma warning disable CS0612 // Type or member is obsolete
-    private readonly IAvailabilityCache _availabilityCache;
-#pragma warning restore CS0612 // Type or member is obsolete
 
     public BookingsController(
         IBookingService bookingService,
-        IBookedSeatsCache bookedSeatsCache,
-#pragma warning disable CS0612 // Type or member is obsolete
-        IAvailabilityCache availabilityCache)
-#pragma warning restore CS0612 // Type or member is obsolete
+        IBookedSeatsCache bookedSeatsCache)
     {
         _bookingService = bookingService;
         _bookedSeatsCache = bookedSeatsCache;
-        _availabilityCache = availabilityCache;
     }
 
     [HttpPost]
@@ -64,15 +57,6 @@ public class BookingsController : ControllerBase
                 // Success! 
                 // Note: We don't need to update BookedSeatsCache because we already reserved them in Step 1
                 var success = result.GetSuccessOrThrow();
-
-                // Update legacy availability counter for UI/Monitoring purposes (Best Effort)
-                // This is not used for booking logic anymore, but keeps the "Seats Available" counter accurate
-#pragma warning disable CS0612 // Type or member is obsolete
-                await _availabilityCache.DecrementAvailableCountAsync(
-                    request.EventId, 
-                    success.SeatCount, 
-                    CancellationToken.None);
-#pragma warning restore CS0612 // Type or member is obsolete
                 
                 return Ok(new BookingResponse(true, "Booking successful", success.SeatCount));
             }
