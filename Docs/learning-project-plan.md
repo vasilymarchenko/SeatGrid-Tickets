@@ -56,6 +56,11 @@
     *   Observe HTTP 503s and timeouts.
     *   Measure P99 Latency.
 
+> [!NOTE]
+> Actual results: [Phase-2](phase-2-results.md)
+> Also, 3 approaches were compared: naive one, pessimistic and optimistic locking.
+[tag Phase-2.1](https://github.com/vasilymarchenko/SeatGrid-Tickets/tree/Phase-2.1)
+
 ### Phase 3: Read Optimization (Caching & Formats)
 **Goal**: Fix the "Read" bottleneck (viewing seat maps).
 *   **Decision Point**: How to cache volatile data?
@@ -65,6 +70,13 @@
     *   **Advanced**: Add a **Bloom Filter** in memory to instantly reject requests for sold-out events.
 *   **Verification**: Run k6 again. Read throughput should skyrocket.
 
+> [!NOTE]
+> Was found that read is not a bottlenack at all - DB handle it perfectly with own cache layer. Didn't touch.
+> Write was rewriten with different cache approaches: [Phase-3](phase-3-results.md) and [Phase-3.1](phase-3.1-results.md)
+[tag Phase-3](https://github.com/vasilymarchenko/SeatGrid-Tickets/tree/Phase-3)
+[tag Phase-3.1](https://github.com/vasilymarchenko/SeatGrid-Tickets/tree/Phase-3.1)
+
+
 ### Phase 4: Write Optimization (Async & Queues)
 **Goal**: Fix the "Write" bottleneck (The Thundering Herd).
 *   **Decision Point**: Sync consistency vs. System availability.
@@ -73,6 +85,9 @@
     *   Change `POST /book` to accept the request, publish a message `TicketRequested`, and return `202 Accepted`.
     *   Create a **Worker Service** (Consumer) that processes messages one by one (or in batches) to update the DB.
     *   Implement **SignalR** or Polling endpoint to let the client know the result.
+
+> [!NOTE]
+> TODO: Phases 4 and 5 will be rconsidered.
 
 ### Phase 5: Distributed Transactions (Sagas)
 **Goal**: Handle distributed failures (e.g., Payment fails after Seat is reserved).
