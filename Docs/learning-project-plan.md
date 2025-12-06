@@ -77,45 +77,43 @@
 [tag Phase-3.1](https://github.com/vasilymarchenko/SeatGrid-Tickets/tree/Phase-3.1)
 
 
-### Phase 4: Write Optimization (Async & Queues)
-**Goal**: Fix the "Write" bottleneck (The Thundering Herd).
-*   **Decision Point**: Sync consistency vs. System availability.
+### Phase 4: Distributed Transactions (Async & Sagas)
+**Goal**: Implement the "Reservation Pattern" to handle high-latency payments.
+*   **Scenario**:
+    1.  **Booking (Fast)**: User grabs a seat. It is reserved for 2 minutes.
+    2.  **Payment (Slow)**: User pays. If successful, booking is confirmed. If failed/timeout, seat is released.
 *   **Action**:
-    *   Introduce **RabbitMQ** or **Kafka**.
-    *   Change `POST /book` to accept the request, publish a message `TicketRequested`, and return `202 Accepted`.
-    *   Create a **Worker Service** (Consumer) that processes messages one by one (or in batches) to update the DB.
-    *   Implement **SignalR** or Polling endpoint to let the client know the result.
+    *   **API Update**: `POST /book` now does:
+        *   **Redis**: `SETNX` with **TTL (120s)**. (The Reservation).
+        *   **Bus**: Publish `BookingInitiated`.
+        *   **Return**: `202 Accepted`.
+    *   **Payment Service (Consumer)**:
+        *   Consumes `BookingInitiated`.
+        *   **Logic**: Sleep 2s. Randomly fail 15% (simulate card decline).
+        *   **Retry Policy**: Configure MassTransit to retry transient failures 3 times.
+    *   **Completion (Saga)**:
+        *   **Success**: Insert into Postgres `Bookings`. Update Redis (Remove TTL).
+        *   **Failure**: Delete Redis Key (Compensation).
+*   **Key Learning**: Handling "Ghost Records" (Redis keys that expire before payment completes) and eventual consistency.
 
-> [!NOTE]
-> TODO: Phases 4 and 5 will be rconsidered.
-
-### Phase 5: Distributed Transactions (Sagas)
-**Goal**: Handle distributed failures (e.g., Payment fails after Seat is reserved).
-*   **Scenario**: Split the Monolith. Create a separate "Payment Service" (Mock).
+### Phase 5: Resilience & Scaling
+**Goal**: Scale the consumers and survive crashes.
 *   **Action**:
-    *   Implement the **Orchestration Saga** using **MassTransit**.
-    *   **Flow**:
-        1.  Inventory Service: Reserve Seat (Pending).
-        2.  Payment Service: Charge User.
-        3.  Inventory Service: Confirm Seat (Booked).
-    *   **Compensation**: If Payment fails -> Release Seat.
+    *   **Horizontal Scaling**: Run multiple instances of the Booking/Payment consumers.
+    *   **Resilience**: Kill the Payment Service during a load test. Verify that messages persist in RabbitMQ and are processed when the service returns.
+    *   **K8s HPA**: (Optional) Configure Horizontal Pod Autoscaler based on CPU or Queue Depth.
 
-### Phase 6: Sharding & High Availability
-**Goal**: Scale the Database.
-*   **Decision Point**: How to partition data?
-*   **Action**:
-    *   **Sharding**: Simulate sharding logic in the app.
-        *   Shard Key: `EventId`.
-        *   Events 1-1000 go to DB_Instance_A.
-        *   Events 1001-2000 go to DB_Instance_B.
-    *   **Replication**: Configure PostgreSQL with a Read Replica. Direct `GET` requests to the replica.
-
-### Phase 7: Analytics (Big Data)
+### Phase 6: Analytics (Big Data)
 **Goal**: Analyze user behavior without slowing down the transactional DB.
 *   **Action**:
-    *   **Streaming**: Publish `SeatViewed` events to Kafka.
-    *   **Ingestion**: Use a consumer to dump these events into **ClickHouse** (or Elasticsearch).
+    *   **Streaming**: Publish `SeatViewed` events to Kafka/RabbitMQ.
+    *   **Ingestion**: Use a consumer to dump these events into **ClickHouse**.
     *   **Query**: Write a query to find "Hot Seats" (most viewed but not booked).
+
+### Phase 7: (Optional) Sharding
+**Goal**: Scale the Database if single-node limits are reached.
+*   **Note**: With 5.5k RPS on a single node, this is likely unnecessary for the learning scope unless targeting >50k RPS.
+*   **Action**: Simulate application-side sharding based on `EventId`.
 
 ---
 
