@@ -48,9 +48,9 @@ public class BookingPessimisticService : IBookingService
                     new BookingError("One or more seats do not exist.", new { MissingSeats = missingSeats }));
             }
 
-            // Check availability
+            // Check availability (Idempotency: Allow if already booked by same user)
             var unavailableSeats = seats
-                .Where(s => s.Status != SeatStatus.Available)
+                .Where(s => s.Status != SeatStatus.Available && s.CurrentHolderId != userId)
                 .ToList();
 
             if (unavailableSeats.Any())
@@ -71,6 +71,12 @@ public class BookingPessimisticService : IBookingService
             // Book the seats: Update Status
             foreach (var seat in seats)
             {
+                // Idempotency check: If already booked by us, skip update
+                if (seat.Status == SeatStatus.Booked && seat.CurrentHolderId == userId)
+                {
+                    continue;
+                }
+
                 seat.Status = SeatStatus.Booked;
                 seat.CurrentHolderId = userId;
             }
@@ -80,19 +86,6 @@ public class BookingPessimisticService : IBookingService
 
             return Result<BookingSuccess, BookingError>.Success(
                 new BookingSuccess(seats.Count));
-        }
-        catch (InvalidOperationException ex) when (ex.InnerException is PostgresException pgEx && pgEx.SqlState == "55P03")
-        {
-            // EF Core execution strategy wraps the PostgresException
-            await transaction.RollbackAsync(cancellationToken);
-            return Result<BookingSuccess, BookingError>.Failure(
-                new BookingError("Seats are currently locked by another transaction. Please try again."));
-        }
-        catch (PostgresException ex) when (ex.SqlState == "55P03") // Lock not available
-        {
-            await transaction.RollbackAsync(cancellationToken);
-            return Result<BookingSuccess, BookingError>.Failure(
-                new BookingError("Seats are currently locked by another transaction. Please try again."));
         }
         catch (Exception)
         {
@@ -108,6 +101,8 @@ public class BookingPessimisticService : IBookingService
             seatPairs.Select(p => $"('{p.Row.Replace("'", "''")}', '{p.Col.Replace("'", "''")}')"));
 
         // Fetch and lock seats in one query using PostgreSQL row-level locking
+        // Removed NOWAIT: In a background Saga consumer, we prefer waiting for the lock
+        // rather than failing immediately. This ensures higher success rates for paid orders.
         // Note: valuesClause is built with SQL-escaped strings (single quotes doubled)
         // The eventId parameter is properly parameterized via {0}
 #pragma warning disable EF1002 // Risk of vulnerability to SQL injection
@@ -116,7 +111,7 @@ public class BookingPessimisticService : IBookingService
                 SELECT * FROM ""Seats""
                 WHERE ""EventId"" = {{0}}
                   AND (""Row"", ""Col"") IN ({valuesClause})
-                FOR UPDATE NOWAIT",
+                FOR UPDATE",
                     eventId)
             .ToListAsync(cancellationToken);
 #pragma warning restore EF1002 // Risk of vulnerability to SQL injection

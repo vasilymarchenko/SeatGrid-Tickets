@@ -11,6 +11,8 @@ using OpenTelemetry.Resources;
 using OpenTelemetry.Exporter;
 using StackExchange.Redis;
 using SeatGrid.API.Application.Decorators;
+using MassTransit;
+using SeatGrid.API.Application.Consumers;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -112,6 +114,34 @@ builder.Services.AddHealthChecks()
         name: "redis",
         timeout: TimeSpan.FromSeconds(3),
         tags: new[] { "ready" });
+
+builder.Services.AddMassTransit(x =>
+{
+    // Register the consumer class so MassTransit can resolve it per message scope
+    x.AddConsumer<BookingFinalizerConsumer>();
+
+    // Configure a RabbitMQ transport and let MassTransit auto-generate endpoints for all consumers
+    x.UsingRabbitMq((context, cfg) =>
+    {
+        var rabbitMqHost = builder.Configuration.GetValue<string>("RabbitMQ:Host") ?? "localhost";
+        cfg.Host(rabbitMqHost, "/", h =>
+        {
+            h.Username("guest");
+            h.Password("guest");
+        });
+
+        // Creates queues/bindings based on the registered consumers (i.e., BookingFinalizerConsumer)
+        cfg.ConfigureEndpoints(context);
+
+        // Alternatively, if messaging topology created separatelly (e.g., Terraform, RabbitMQ definitions),
+        // we can define endpoints explicitly:
+        // cfg.ReceiveEndpoint("booking-finalizer-queue", e =>
+        // {
+        //     e.ConfigureConsumer<BookingFinalizerConsumer>(context);
+        //     // Customize bindings, dead-letter exchanges, prefetch, retries, etc.
+        // });
+    });
+});
 
 builder.Services.AddControllers();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi

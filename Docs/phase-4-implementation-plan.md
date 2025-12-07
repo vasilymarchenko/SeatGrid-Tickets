@@ -58,8 +58,19 @@ We will implement a **Choreography-based Saga** (or simple Event-Driven Architec
 *   Create Consumers in the API project to handle the finalization logic.
 
 ### Step 4: Testing & Observability
-*   **Load Test**: Update k6 scripts to handle `202 Accepted` (Async flow).
-*   **Tracing**: Ensure OpenTelemetry traces connect the API request -> RabbitMQ -> Payment Service (Distributed Tracing).
+*   **Load Test Strategy (2-Phase)**:
+    1.  **Phase 1: The Assault (Reservation)**
+        *   Generate high concurrency booking requests (2000 users / 100 seats).
+        *   **Expectation**: API returns `202 Accepted` immediately.
+        *   **Metric**: High RPS, low latency (since we only hit Redis).
+    2.  **Phase 2: The Settlement (Validation)**
+        *   Wait for the "Payment Window" (e.g., 5-10 seconds).
+        *   **Validation**: Query `GET /events/{id}/seats`.
+        *   **Success Criteria**:
+            *   **Booked**: ~85 seats (matching the 85% success rate).
+            *   **Available**: ~15 seats (released after payment failure).
+            *   **Stuck/Reserved**: 0 seats (Consistency check).
+*   **Tracing**: Ensure OpenTelemetry traces connect the API request -> RabbitMQ -> Payment Service.
 *   **Resilience**: Verify that if the Payment Service is down, messages pile up in RabbitMQ and are processed when it comes back online.
 
 ## 5. Success Criteria

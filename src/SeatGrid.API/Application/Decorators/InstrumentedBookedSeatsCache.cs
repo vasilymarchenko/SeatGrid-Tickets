@@ -37,12 +37,12 @@ public class InstrumentedBookedSeatsCache : IBookedSeatsCache
         }
     }
 
-    public async Task<bool> TryReserveSeatsAsync(long eventId, List<(string Row, string Col)> seats, CancellationToken cancellationToken)
+    public async Task<bool> TryReserveSeatsAsync(long eventId, List<(string Row, string Col)> seats, TimeSpan? ttl, CancellationToken cancellationToken)
     {
         var sw = Stopwatch.StartNew();
         try
         {
-            var result = await _inner.TryReserveSeatsAsync(eventId, seats, cancellationToken);
+            var result = await _inner.TryReserveSeatsAsync(eventId, seats, ttl, cancellationToken);
             
             if (result)
             {

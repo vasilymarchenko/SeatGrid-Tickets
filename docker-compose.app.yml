@@ -11,7 +11,8 @@ services:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:8080
-      - Booking__Strategy=optimistic
+      - Booking__Strategy=pessimistic
+      - RabbitMQ__Host=rabbitmq
     ports:
       - "5000:8080"
     healthcheck:
@@ -24,6 +25,24 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    restart: unless-stopped
+
+  payment-service:
+    image: seatgrid-payment-service
+    container_name: seatgrid-payment-service
+    build:
+      context: .
+      dockerfile: src/SeatGrid.PaymentService/Dockerfile
+    environment:
+      - RabbitMQ__Host=rabbitmq
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+    depends_on:
+      rabbitmq:
         condition: service_healthy
       otel-collector:
         condition: service_started
