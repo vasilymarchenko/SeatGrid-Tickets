@@ -1,10 +1,47 @@
+/**
+ * Async Saga (Choreography) Load Test
+ *
+ * This test exercises the full "Reservation First" booking flow:
+ *
+ *   1. POST /api/Bookings
+ *        → BookingsController atomically reserves the seat in Redis (Lua, TTL=120s).
+ *        → If the seat is already held: instant 409 Conflict (no message is published).
+ *        → If reserved: BookingInitiated is published to RabbitMQ, 202 Accepted returned.
+ *           The user is told to "wait for payment confirmation" — but there is NO push
+ *           notification. The client must poll to learn the final outcome (see teardown).
+ *
+ *   2. PaymentConsumer (SeatGrid.PaymentService)
+ *        → Consumes BookingInitiated; simulates ~2s processing delay.
+ *        → 85% success  → publishes PaymentSucceeded
+ *        → 15% failure  → publishes PaymentFailed  ("Card Declined")
+ *
+ *   3. BookingFinalizerConsumer (SeatGrid.API)
+ *        → PaymentSucceeded:
+ *             a. INSERT booking to PostgreSQL (pessimistic lock, idempotent).
+ *             b. AddBookedSeatsAsync → sets Redis field value to DateTime.MaxValue ticks
+ *                (marks seat as permanently booked in stale-detection logic; key TTL: 24h).
+ *             c. DB failure → ReleaseSeatsAsync (compensation, seat freed).
+ *        → PaymentFailed:
+ *             ReleaseSeatsAsync → removes the 120s reservation, seat immediately available.
+ *
+ *   Background: CacheReconciliationService (every 60s)
+ *        → Scans for "ghost" reservations (reserved in Redis, Available in DB) and releases them.
+ *
+ * What the test can and cannot observe:
+ *   - A 202 response means the RESERVATION succeeded, NOT that payment will succeed.
+ *   - A 409 response means the seat is currently held by another user (or permanently booked).
+ *   - The test has no way to track individual booking outcomes — the saga completes
+ *     asynchronously after the HTTP response. Final state is only visible via teardown polling.
+ */
+
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { Counter } from 'k6/metrics';
 import { randomIntBetween } from 'https://jslib.k6.io/k6-utils/1.2.0/index.js';
 import { textSummary } from 'https://jslib.k6.io/k6-summary/0.0.1/index.js';
 
-// Custom metrics
+// Custom metrics — track saga entry-point outcomes only (not final booking outcomes).
+// A 202 count does NOT equal confirmed bookings; ~15% will roll back via PaymentFailed.
 const bookingAccepted = new Counter('booking_accepted_202');
 const bookingConflict = new Counter('booking_conflict_409');
 const bookingError = new Counter('booking_error_5xx');
@@ -32,6 +69,11 @@ export const options = {
   },
 };
 
+/**
+ * setup() — runs once before the load test begins.
+ * Creates a fresh 10×10 event (100 seats) so all seats start as Available.
+ * Returns the eventId shared across all VUs via the `data` parameter.
+ */
 export function setup() {
   const payload = JSON.stringify({
     Name: `Async Saga Test ${new Date().toISOString()}`,
@@ -52,6 +94,20 @@ export function setup() {
   return { eventId };
 }
 
+/**
+ * default() — the main VU loop. Each iteration is one booking attempt (Saga step 1).
+ *
+ * Each VU picks a random seat and fires POST /api/Bookings:
+ *   202 → Redis reservation succeeded; BookingInitiated published. Payment outcome unknown yet.
+ *   409 → Seat is currently locked (reserved or permanently booked). Fast rejection from Redis.
+ *
+ * Both 202 and 409 are treated as "correct" behaviour — the check passes for both.
+ * A 5xx would indicate a system error (e.g. Redis or RabbitMQ unavailable).
+ *
+ * Note: a single VU always uses the same userId (`user-<VU>`), so if it retries
+ * the same seat it just hit, BookingFinalizerConsumer's idempotency check will
+ * treat it as a no-op on the DB side.
+ */
 export default function (data) {
   const eventId = data.eventId;
   const row = randomIntBetween(1, 10).toString();
@@ -82,6 +138,23 @@ export default function (data) {
   sleep(0.1);
 }
 
+/**
+ * teardown() — polling substitute for customer notification.
+ *
+ * Because the system has no push notification (no SignalR, no order-status endpoint),
+ * the only way to observe saga completion is to poll the seat-status endpoint after
+ * enough time has passed for the async pipeline to drain:
+ *
+ *   POST /api/Bookings → 202                     (t=0)
+ *   PaymentConsumer processes (~2s delay)         (t≈2s)
+ *   BookingFinalizerConsumer writes to DB/Redis   (t≈2-3s)
+ *
+ * Waiting 10s is intentionally conservative to account for queue backlog under load.
+ *
+ * Expected final state:
+ *   All 100 seats Booked — even with 15% payment failures, compensation releases seats
+ *   fast enough for subsequent users to claim them, resulting in 100% occupancy.
+ */
 export function teardown(data) {
   const eventId = data.eventId;
   console.log('Waiting 10s for payments to process...');
@@ -106,6 +179,12 @@ export function teardown(data) {
   }
 }
 
+/**
+ * handleSummary() — prints saga-layer metrics alongside the standard k6 summary.
+ *
+ * Reminder: booking_accepted_202 ≠ confirmed bookings.
+ * The final confirmed count is only visible in the teardown seat-status poll above.
+ */
 export function handleSummary(data) {
     const accepted = data.metrics.booking_accepted_202?.values.count || 0;
     const conflict = data.metrics.booking_conflict_409?.values.count || 0;

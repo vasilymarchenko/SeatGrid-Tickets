@@ -17,11 +17,22 @@ We successfully migrated the booking system from a synchronous "Booking First" a
 - **Events**: Publishes `PaymentSucceeded` or `PaymentFailed`.
 
 ### 3. Saga Orchestration (Choreography)
-- **Finalizer**: `SeatGrid.API` listens for payment results.
-- **Success**: Persists the booking to PostgreSQL and makes the Redis lock permanent.
-- **Failure**: Releases the Redis lock (Compensation), allowing other users to book the seat.
+- **Finalizer**: `SeatGrid.API` (`BookingFinalizerConsumer`) listens for payment results via RabbitMQ.
+- **Success path** (`PaymentSucceeded`):
+  1. Persists the booking to PostgreSQL via `IBookingService`.
+  2. On DB success: calls `AddBookedSeatsAsync`, which overwrites the Redis field value to `DateTime.MaxValue.Ticks` — marking the seat as permanently booked (never expires in the stale-detection logic). The Redis key itself retains a 24h expiry.
+  3. On DB failure: calls `ReleaseSeatsAsync` as compensation (seat freed for others).
+- **Failure path** (`PaymentFailed`): calls `ReleaseSeatsAsync` — removes the 120s TTL reservation so the seat becomes available again immediately.
 
-### 4. Consistency Strategy (Refinement)
+### 4. Customer Notification Gap
+The `202 Accepted` response tells the client *"Booking initiated. Please wait for payment confirmation."* — but **no push notification exists**. The customer has no way to know the final outcome without polling:
+- There is no `GET /api/orders/{orderId}` status endpoint.
+- There is no WebSocket / SignalR channel.
+- The only indirect check is `GET /api/events/{id}/seats` — if the seat status transitions to `Booked`, payment succeeded; if it returns to `Available`, payment failed.
+
+This is a known architectural gap. A production system would require a query-side order status resource or a push mechanism (SignalR, webhooks, email/SMS).
+
+### 5. Consistency Strategy (Refinement)
 We switched from Optimistic to **Pessimistic Locking** for the background consumer (`BookingFinalizerConsumer`) to prioritize consistency over latency:
 - **Guaranteed Success**: Once a user has paid, the system must make every effort to fulfill the order. Pessimistic locking (`FOR UPDATE`) waits for locks rather than failing fast, ensuring the transaction completes even under contention.
 - **Idempotency**: The service handles duplicate messages gracefully. If a seat is already booked by the *same* user, it is treated as a success.
@@ -47,3 +58,5 @@ The test confirmed that the system self-heals. Even with a **15% payment failure
 
 ## Conclusion
 The distributed transaction implementation is robust and handles high concurrency effectively. The "Reservation Pattern" ensures that seats are not held indefinitely by failed transactions, maximizing inventory utilization.
+
+The main open item is the customer notification gap: clients currently have no push-based way to learn the final booking outcome and must resort to polling the seat-status endpoint.
