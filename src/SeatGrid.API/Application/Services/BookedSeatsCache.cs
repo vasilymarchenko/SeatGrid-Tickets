@@ -14,33 +14,40 @@ public class BookedSeatsCache : IBookedSeatsCache
 
     private static string GetCacheKey(long eventId) => $"event:{eventId}:seats";
 
-    // Lua script for atomic reservation
+    // Lua script for atomic reservation with TTL support
     // KEYS[1] = "event:{eventId}:seats"
-    // ARGV[1] = timestamp (current UTC ticks)
-    // ARGV[2...] = seat identifiers ("Row-Col" format, e.g., "A-5", "B-12")
+    // ARGV[1] = expirationTimestamp (ticks)
+    // ARGV[2] = currentTimestamp (ticks)
+    // ARGV[3...] = seat identifiers ("Row-Col")
     private const string ReserveScript = @"
         local key = KEYS[1]
-        local timestamp = ARGV[1]
+        local expiry = tonumber(ARGV[1])
+        local now = tonumber(ARGV[2])
         local seats = {}
 
-        -- Parse arguments (starting from 2) into a table
-        for i = 2, #ARGV do
+        -- Parse arguments (starting from 3) into a table
+        for i = 3, #ARGV do
             table.insert(seats, ARGV[i])
         end
 
-        -- 1. Check if ANY requested seat is already taken
+        -- 1. Check if ANY requested seat is already taken AND valid
         for _, seat in ipairs(seats) do
-            if redis.call('HEXISTS', key, seat) == 1 then
-                return 0 -- Fail: At least one seat is taken
+            local val = redis.call('HGET', key, seat)
+            if val then
+                local seatExpiry = tonumber(val)
+                -- If seatExpiry is nil (legacy data) or > now, it is taken
+                if not seatExpiry or seatExpiry > now then
+                    return 0 -- Fail
+                end
             end
         end
 
         -- 2. If all free, reserve ALL of them
         for _, seat in ipairs(seats) do
-            redis.call('HSET', key, seat, timestamp)
+            redis.call('HSET', key, seat, expiry)
         end
 
-        -- Set expiration if key didn't exist (24h)
+        -- Set expiration for the whole hash key (safety net, e.g. 24h)
         if redis.call('TTL', key) == -1 then
             redis.call('EXPIRE', key, 86400)
         end
@@ -65,7 +72,8 @@ public class BookedSeatsCache : IBookedSeatsCache
         {
             var db = _redis.GetDatabase();
             var key = GetCacheKey(eventId);
-            var timestamp = DateTime.UtcNow.Ticks;
+            // For permanent bookings, use MaxValue or a very long time
+            var timestamp = DateTime.MaxValue.Ticks;
 
             // Convert to HashEntries
             var entries = seats
@@ -83,7 +91,7 @@ public class BookedSeatsCache : IBookedSeatsCache
         }
     }
 
-    public async Task<bool> TryReserveSeatsAsync(long eventId, List<(string Row, string Col)> seats, CancellationToken cancellationToken)
+    public async Task<bool> TryReserveSeatsAsync(long eventId, List<(string Row, string Col)> seats, TimeSpan? ttl, CancellationToken cancellationToken)
     {
         if (seats == null || seats.Count == 0) return false;
 
@@ -91,10 +99,12 @@ public class BookedSeatsCache : IBookedSeatsCache
         {
             var db = _redis.GetDatabase();
             var key = GetCacheKey(eventId);
-            var timestamp = DateTime.UtcNow.Ticks;
+            var now = DateTime.UtcNow.Ticks;
+            // If TTL is provided, use it. Otherwise, assume permanent (MaxValue)
+            var expiry = ttl.HasValue ? DateTime.UtcNow.Add(ttl.Value).Ticks : DateTime.MaxValue.Ticks;
 
-            // Prepare arguments: [timestamp, seat1, seat2, ...]
-            var args = new List<RedisValue> { timestamp };
+            // Prepare arguments: [expiry, now, seat1, seat2, ...]
+            var args = new List<RedisValue> { expiry, now };
             args.AddRange(seats.Select(s => (RedisValue)$"{s.Row}-{s.Col}"));
 
             var result = await db.ScriptEvaluateAsync(

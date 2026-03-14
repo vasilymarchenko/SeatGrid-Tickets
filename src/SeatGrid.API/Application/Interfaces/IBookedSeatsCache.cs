@@ -24,9 +24,10 @@ public interface IBookedSeatsCache
     /// </summary>
     /// <param name="eventId">The event identifier</param>
     /// <param name="seats">List of seat row/column pairs to reserve</param>
+    /// <param name="ttl">Time-to-live for the reservation (optional)</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>True if reservation succeeded (token acquired), False if any seat was already taken</returns>
-    Task<bool> TryReserveSeatsAsync(long eventId, List<(string Row, string Col)> seats, CancellationToken cancellationToken);
+    Task<bool> TryReserveSeatsAsync(long eventId, List<(string Row, string Col)> seats, TimeSpan? ttl, CancellationToken cancellationToken);
 
     /// <summary>
     /// Releases (removes) specific seats from the cache.

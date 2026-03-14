@@ -40,7 +40,7 @@ docker compose -f docker-compose.infra.yml up -d
 *   **Loki** (Logs): Visualized in Grafana
 
 ### 2. Run the Application (Docker)
-To run the application along with the infrastructure:
+To run the application (API + Payment Service) along with the infrastructure:
 ```bash
 docker compose -f docker-compose.infra.yml -f docker-compose.app.yml up -d --build
 ```
@@ -48,7 +48,7 @@ The API will be available at `http://localhost:5000`.
 
 **Configuration**:
 The application uses a Strategy pattern for booking implementations. Configure via environment variable:
-*   `Booking__Strategy=Pessimistic` (default) - Uses PostgreSQL row-level locking (FOR UPDATE NOWAIT) for high-concurrency scenarios
+*   `Booking__Strategy=Pessimistic` (default) - Uses PostgreSQL row-level locking (FOR UPDATE) to ensure consistency in background processing.
 *   `Booking__Strategy=Naive` - Basic transaction isolation without explicit locking (baseline implementation)
 
 To switch strategies, modify the environment variable in `docker-compose.app.yml`.
@@ -83,8 +83,10 @@ k6 run tests/k6/baseline_test.js
 *   **[Phase 2 Results](Docs/phase-2-results.md)** ✅ - Baseline performance established: 2.33s P95 latency under 2,000 concurrent users. System survived without crashes, bottlenecks identified.
 *   **[Phase 3 Results](Docs/phase-3-results.md)** ✅ - Cache optimization complete: 565ms P95 latency (24x improvement), 4,130 RPS throughput (20x increase), 0% error rate. Two-layer cache architecture (available count + booked seats) eliminated 99.9% of database queries.
 *   **[Phase 3.1 Results](Docs/phase-3.1-results.md)** ✅ - Reworked cache approach. Lua script and cach-first approach eliminated concurrency issues and increased throughput up to 5.500 RPS.
+*   **[Phase 4 Results](Docs/phase-4-results.md)** ✅ - Distributed Transactions (Saga Pattern). Implemented async reservation flow with RabbitMQ and MassTransit. Switched to Pessimistic Locking for the finalizer to guarantee consistency after payment. Achieved 100% seat utilization with self-healing compensation logic.
 
 ## Project stages
 [tag Phase-2.1](https://github.com/vasilymarchenko/SeatGrid-Tickets/tree/Phase-2.1)
 [tag Phase-3](https://github.com/vasilymarchenko/SeatGrid-Tickets/tree/Phase-3)
 [tag Phase-3.1](https://github.com/vasilymarchenko/SeatGrid-Tickets/tree/Phase-3.1)
+[tag Phase-4](https://github.com/vasilymarchenko/SeatGrid-Tickets/tree/Phase-4)

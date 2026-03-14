@@ -1,7 +1,9 @@
+using MassTransit;
 using Microsoft.AspNetCore.Mvc;
 using SeatGrid.API.Application.DTOs.Requests;
 using SeatGrid.API.Application.DTOs.Responses;
 using SeatGrid.API.Application.Interfaces;
+using SeatGrid.Contracts;
 
 namespace SeatGrid.API.Controllers;
 
@@ -9,15 +11,15 @@ namespace SeatGrid.API.Controllers;
 [Route("api/[controller]")]
 public class BookingsController : ControllerBase
 {
-    private readonly IBookingService _bookingService;
     private readonly IBookedSeatsCache _bookedSeatsCache;
+    private readonly IPublishEndpoint _publishEndpoint;
 
     public BookingsController(
-        IBookingService bookingService,
-        IBookedSeatsCache bookedSeatsCache)
+        IBookedSeatsCache bookedSeatsCache,
+        IPublishEndpoint publishEndpoint)
     {
-        _bookingService = bookingService;
         _bookedSeatsCache = bookedSeatsCache;
+        _publishEndpoint = publishEndpoint;
     }
 
     [HttpPost]
@@ -29,58 +31,39 @@ public class BookingsController : ControllerBase
         }
 
         var seatPairs = request.Seats.Select(s => (s.Row, s.Col)).ToList();
+        var orderId = Guid.NewGuid();
 
-        // 1. Redis Gatekeeper: Try to reserve specific seats atomically
-        // This prevents 99.9% of conflicts from hitting the DB
+        // 1. Redis Gatekeeper: Reserve seats with TTL (120s)
+        // This is the "Reservation" phase.
         var reserved = await _bookedSeatsCache.TryReserveSeatsAsync(
             request.EventId, 
             seatPairs, 
+            TimeSpan.FromSeconds(120),
             CancellationToken.None);
 
         if (!reserved)
         {
             return Conflict(new BookingErrorResponse(false, 
-                "One or more seats are already reserved (cache hit)."));
+                "One or more seats are already reserved."));
         }
 
         try
         {
-            // 2. DB Transaction (Optimistic Lock)
-            var result = await _bookingService.BookSeatsAsync(
-                request.EventId,
-                request.UserId,
-                seatPairs,
-                CancellationToken.None);
-
-            if (result.IsSuccess)
+            // 2. Publish Event to Bus (Async Payment)
+            await _publishEndpoint.Publish(new BookingInitiated
             {
-                // Success! 
-                // Note: We don't need to update BookedSeatsCache because we already reserved them in Step 1
-                var success = result.GetSuccessOrThrow();
-                
-                return Ok(new BookingResponse(true, "Booking successful", success.SeatCount));
-            }
-            else
-            {
-                // 3. Compensation: Booking failed (e.g. DB constraint, validation error)
-                // We must release the seats in Redis so others can try
-                await _bookedSeatsCache.ReleaseSeatsAsync(
-                    request.EventId, 
-                    seatPairs, 
-                    CancellationToken.None);
+                OrderId = orderId,
+                EventId = request.EventId,
+                Seats = request.Seats.Select(s => new SeatLocation(int.Parse(s.Row), int.Parse(s.Col))).ToList(),
+                UserId = request.UserId,
+                CreatedAt = DateTime.UtcNow
+            });
 
-                var error = result.GetErrorOrThrow();
-
-                if (error.Message.Contains("locked") || error.Message.Contains("already booked"))
-                {
-                    return Conflict(new BookingErrorResponse(false, error.Message, error.Details));
-                }
-                return BadRequest(new BookingErrorResponse(false, error.Message, error.Details));
-            }
+            return Accepted(new BookingResponse(true, "Booking initiated. Please wait for payment confirmation.", request.Seats.Count));
         }
         catch (Exception)
         {
-            // 4. Compensation on Crash: Ensure we don't leave ghost seats if the app crashes
+            // Compensation: If publishing fails, release the lock
             await _bookedSeatsCache.ReleaseSeatsAsync(
                 request.EventId, 
                 seatPairs, 
