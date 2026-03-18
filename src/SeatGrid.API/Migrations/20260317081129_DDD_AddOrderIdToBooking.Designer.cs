@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using SeatGrid.API.Infrastructure.Persistence;
@@ -11,9 +12,11 @@ using SeatGrid.API.Infrastructure.Persistence;
 namespace SeatGrid.API.Migrations
 {
     [DbContext(typeof(SeatGridDbContext))]
-    partial class SeatGridDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260317081129_DDD_AddOrderIdToBooking")]
+    partial class DDD_AddOrderIdToBooking
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

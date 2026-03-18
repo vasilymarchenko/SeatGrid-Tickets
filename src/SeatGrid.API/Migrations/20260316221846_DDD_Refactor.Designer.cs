@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using SeatGrid.API.Infrastructure.Persistence;
@@ -11,9 +12,11 @@ using SeatGrid.API.Infrastructure.Persistence;
 namespace SeatGrid.API.Migrations
 {
     [DbContext(typeof(SeatGridDbContext))]
-    partial class SeatGridDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260316221846_DDD_Refactor")]
+    partial class DDD_Refactor
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -49,18 +52,12 @@ namespace SeatGrid.API.Migrations
                     b.Property<long>("EventId")
                         .HasColumnType("bigint");
 
-                    b.Property<Guid>("OrderId")
-                        .HasColumnType("uuid");
-
                     b.Property<string>("UserId")
                         .IsRequired()
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("OrderId")
-                        .IsUnique();
 
                     b.ToTable("Bookings", (string)null);
                 });

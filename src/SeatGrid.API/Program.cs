@@ -1,3 +1,4 @@
+using MediatR;
 using Microsoft.EntityFrameworkCore;
 using SeatGrid.API.Infrastructure.Persistence;
 using SeatGrid.API.Application.Interfaces;
@@ -20,35 +21,13 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<SeatGridDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
+// Register MediatR. The assembly scan picks up all INotificationHandler<T>
+// implementations in this assembly — including any future domain event handlers.
+builder.Services.AddMediatR(cfg =>
+    cfg.RegisterServicesFromAssembly(typeof(Program).Assembly));
+
 builder.Services.AddScoped<IEventRepository, EventRepository>();
-
-// Register all booking service implementations
-builder.Services.AddScoped<BookingNaiveService>();
-builder.Services.AddScoped<BookingPessimisticService>();
-builder.Services.AddScoped<BookingOptimisticService>();
-
-// Strategy pattern: Use factory to resolve the correct implementation based on configuration
-builder.Services.AddScoped<IBookingService>(serviceProvider =>
-{
-    var configuration = serviceProvider.GetRequiredService<IConfiguration>();
-    var strategy = configuration.GetValue<string>("Booking:Strategy")?.ToLowerInvariant() ?? "pessimistic";
-    
-    // Dictionary-based strategy resolution for clean, extensible service selection
-    var strategyMap = new Dictionary<string, Func<IServiceProvider, IBookingService>>(StringComparer.OrdinalIgnoreCase)
-    {
-        ["naive"] = sp => sp.GetRequiredService<BookingNaiveService>(),
-        ["pessimistic"] = sp => sp.GetRequiredService<BookingPessimisticService>(),
-        ["optimistic"] = sp => sp.GetRequiredService<BookingOptimisticService>()
-    };
-    
-    if (strategyMap.TryGetValue(strategy, out var factory))
-    {
-        return factory(serviceProvider);
-    }
-    
-    // Default to pessimistic if unknown strategy
-    return serviceProvider.GetRequiredService<BookingPessimisticService>();
-});
+builder.Services.AddScoped<IBookingRepository, BookingRepository>();
 
 builder.Services.AddScoped<IEventService, EventService>();
 
