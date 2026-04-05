@@ -8,18 +8,6 @@
 *   **Architecture**: Evolves from a naive monolith to a distributed microservices architecture.
 *   **Tech Stack**: .NET 8/9, PostgreSQL, Redis, RabbitMQ/Kafka, Kubernetes, OpenTelemetry.
 
-## Roadmap
-
-This project follows a phased implementation plan:
-
-1.  **Phase 1: The Naive Monolith** - A baseline implementation to establish functionality.
-2.  **Phase 2: Observability & The "Crash"** - Stress testing with k6 to identify bottlenecks.
-3.  **Phase 3: Read Optimization** - Implementing caching (Redis) and efficient data formats.
-4.  **Phase 4: Write Optimization** - Handling the "Thundering Herd" with message queues.
-5.  **Phase 5: Distributed Transactions** - Implementing Sagas for data consistency.
-6.  **Phase 6: Sharding & HA** - Database scaling strategies.
-7.  **Phase 7: Analytics** - Big data ingestion with ClickHouse.
-
 ## Getting Started
 
 ### Prerequisites
@@ -84,6 +72,8 @@ k6 run tests/k6/baseline_test.js
 *   **[Phase 3 Results](Docs/phase-3-results.md)** ✅ - Cache optimization complete: 565ms P95 latency (24x improvement), 4,130 RPS throughput (20x increase), 0% error rate. Two-layer cache architecture (available count + booked seats) eliminated 99.9% of database queries.
 *   **[Phase 3.1 Results](Docs/phase-3.1-results.md)** ✅ - Reworked cache approach. Lua script and cach-first approach eliminated concurrency issues and increased throughput up to 5.500 RPS.
 *   **[Phase 4 Results](Docs/phase-4-results.md)** ✅ - Distributed Transactions (Saga Pattern). Implemented async reservation flow with RabbitMQ and MassTransit. Switched to Pessimistic Locking for the finalizer to guarantee consistency after payment. Achieved 100% seat utilization with self-healing compensation logic.
+
+**[Architecture overview (current state)](Docs/architecture-and-flow.md)**
 
 ## Project stages
 [tag Phase-2.1](https://github.com/vasilymarchenko/SeatGrid-Tickets/tree/Phase-2.1)
